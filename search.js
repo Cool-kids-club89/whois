@@ -24,32 +24,36 @@ btn.onclick = async () => {
   const profile = await showUserProfile(user, result);
 
   // -------------------------
-  // Fetch local individual page
+  // Fetch local individual page (same repo)
   // -------------------------
   try {
-    const res = await fetch(`individual/${user}`);
+    const res = await fetch(`individual/${user}.html`);
     if (res.ok) {
       const html = await res.text();
       result.innerHTML += `<section><h3>Local Individual Page</h3>${html}</section>`;
       extractKeywords(html, user, window.userKeywordCache[user] = {});
       scoreSource("Local Individual Page", window.userKeywordCache[user]);
     }
-  } catch {}
+  } catch (e) {
+    console.warn("Individual page fetch failed:", e);
+  }
 
   // -------------------------
-  // Fetch GitHub organizations pages
+  // Fetch GitHub organizations pages (same repo)
   // -------------------------
   if (profile.github?.orgs?.length) {
     for (const org of profile.github.orgs) {
       try {
-        const res = await fetch(`org/${org}`);
+        const res = await fetch(`org/${org}.html`);
         if (res.ok) {
           const html = await res.text();
           result.innerHTML += `<section><h3>Organization: ${org}</h3>${html}</section>`;
           extractKeywords(html, org, window.userKeywordCache[org] = {});
           scoreSource("Organization Page", window.userKeywordCache[org]);
         }
-      } catch {}
+      } catch (e) {
+        console.warn(`Organization page fetch failed for ${org}:`, e);
+      }
     }
   }
 
