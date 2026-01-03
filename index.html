@@ -4,15 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WHOIS Repo</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
   <link rel="stylesheet" href="style.css">
+  <script type="module" src="search.js" defer></script>
 </head>
 <body>
   <div class="container">
     <h1>WHOIS Lookup</h1>
-    <input type="text" id="usernameInput" placeholder="Enter username (e.g., 4zx16)">
-    <button id="searchBtn">Search</button>
-    <div id="result"></div>
+    <div class="search-box">
+      <input type="text" id="usernameInput" placeholder="Enter username (e.g., 4zx16)">
+      <button id="searchBtn">Search</button>
+    </div>
+    <div id="result" class="profile-container"></div>
   </div>
-  <script src="search.js"></script>
 </body>
 </html>
