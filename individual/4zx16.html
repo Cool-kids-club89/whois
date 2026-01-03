@@ -32,6 +32,8 @@ section h2 { margin-top:0; font-size:1.3rem; border-bottom:1px solid var(--borde
 .risk-low { color:var(--good); }
 footer { padding:24px; text-align:center; color:var(--muted); border-top:1px solid var(--border); }
 code { background:#0a0f1a; padding:2px 6px; border-radius:6px; color:var(--accent); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -126,7 +128,148 @@ code { background:#0a0f1a; padding:2px 6px; border-radius:6px; color:var(--accen
 <p>4zx16 is a multifaceted developer and technologist with a deep footprint in underground scripting and game development communities. His publicly documented work spans games, tools, and systems — blending legitimate innovation with ethically controversial artifacts. Alias volatility and persona complexity make long‑term identity tracking difficult.</p>
 <p class="risk-mid">Not hostile by default; influential within niche tech spheres.</p>
 </section>
+
+<!-- DYNAMIC AGGREGATED DATA SECTION -->
+<section id="dynamic-whois">
+<h2>Dynamic Aggregated Data</h2>
+<p>Loading additional OSINT, GitHub, and keyword data…</p>
+</section>
+
 </main>
 <footer>WHOIS Report • Synthesized from official public sources</footer>
+
+<script>
+// --- CONFIG ---
+const user = "4zx16";
+const dynamicSection = document.getElementById("dynamic-whois");
+const knownUsers = ["4zx16","7zh14"];
+window.userKeywordCache = {};
+
+// --- UTILITY FUNCTIONS ---
+function extractKeywordsFromText(text, user, keywords) {
+  const blacklist = ["the","and","with","from","that",user.toLowerCase()];
+  const words = text.toLowerCase().replace(/[^a-z0-9+.#]/g," ").split(/\s+/).filter(w=>w.length>3 && !blacklist.includes(w));
+  words.forEach(w => { keywords[w]=(keywords[w]||0)+1; });
+}
+
+function displayKeywordConfidence(keywords) {
+  const total = Object.values(keywords).reduce((a,b)=>a+b,0);
+  const sorted = Object.entries(keywords).sort((a,b)=>b[1]-a[1]);
+  const ul = document.createElement("ul");
+  sorted.forEach(([k,v])=>{
+    const li = document.createElement("li");
+    li.textContent = `${k} — ${(v/total*100).toFixed(1)}%`;
+    ul.appendChild(li);
+  });
+  dynamicSection.appendChild(document.createElement("hr"));
+  dynamicSection.innerHTML += "<h3>Keyword Confidence</h3>";
+  dynamicSection.appendChild(ul);
+}
+
+function displayCrossUserCorrelation(keywords) {
+  const correlations = [];
+  knownUsers.forEach(otherUser=>{
+    if(otherUser===user) return;
+    if(window.userKeywordCache[otherUser]){
+      const otherKeywords = window.userKeywordCache[otherUser];
+      Object.keys(keywords).forEach(k=>{
+        if(otherKeywords[k]) correlations.push({keyword:k,user:otherUser});
+      });
+    }
+  });
+  if(correlations.length){
+    const ul = document.createElement("ul");
+    correlations.forEach(c=>{
+      const li = document.createElement("li");
+      li.textContent = `${c.keyword} — also appears in ${c.user}`;
+      ul.appendChild(li);
+    });
+    dynamicSection.appendChild(document.createElement("hr"));
+    dynamicSection.innerHTML += "<h3>Cross-User Keyword Correlation</h3>";
+    dynamicSection.appendChild(ul);
+  }
+}
+
+// --- FETCH GITHUB INFO ---
+async function loadGitHub(keywords){
+  try {
+    const profile = await fetch(`https://api.github.com/users/${user}`).then(r=>r.json());
+    const repos = await fetch(profile.repos_url).then(r=>r.json());
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <h3>GitHub Info</h3>
+      <p><strong>Username:</strong> ${profile.login}</p>
+      <p><strong>Bio:</strong> ${profile.bio||"N/A"}</p>
+      <p><strong>Public Repositories:</strong> ${profile.public_repos}</p>
+      <p><strong>Followers:</strong> ${profile.followers}</p>
+      <details><summary>Repository List</summary><ul>${repos.map(r=>`<li><a href="${r.html_url}" target="_blank">${r.name}</a> - ${r.description||""}</li>`).join("")}</ul></details>
+    `;
+    dynamicSection.appendChild(div);
+    extractKeywordsFromText(profile.bio||"", user, keywords);
+    repos.forEach(r=>extractKeywordsFromText(r.name + " " + (r.description||""), user, keywords));
+  } catch {
+    const p = document.createElement("p");
+    p.textContent = "GitHub data unavailable.";
+    dynamicSection.appendChild(p);
+  }
+}
+
+// --- FETCH KRYSEARCH ---
+async function loadKrySearch(keywords){
+  const url = `https://4zx16.github.io/Krynet/KrySearch/Search.html?q=${user}`;
+  try {
+    const res = await fetch(url);
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html,"text/html");
+    const links = [...doc.querySelectorAll("a")].map(a=>a.href).filter(h=>h && !h.includes("#"));
+    const text = doc.body.innerText || "";
+    extractKeywordsFromText(text, user, keywords);
+    const div = document.createElement("div");
+    div.innerHTML = `<h3>OSINT Discovery (KrySearch)</h3>
+      <p><strong>Queried Source:</strong> <a href="${url}" target="_blank">${url}</a></p>
+      <ul>${links.slice(0,15).map(l=>`<li><a href="${l}" target="_blank">${l}</a></li>`).join("")}</ul>`;
+    dynamicSection.appendChild(div);
+  } catch {
+    const p = document.createElement("p");
+    p.textContent = "KrySearch results unavailable.";
+    dynamicSection.appendChild(p);
+  }
+}
+
+// --- EXTERNAL SOURCES ---
+function listExternalSources(keywords){
+  const sources = [
+    `https://about${user}.carrd.co/`,
+    `https://degenerates2.carrd.co/#l${user}`,
+    `https://vybfnedwm.carrd.co/`,
+    `https://4zx16-info.carrd.co/`,
+    `https://degenerates.carrd.co/`,
+    `https://jameshickers.github.io/About/${user}.html`,
+    `https://github.com/${user}`
+  ];
+  const ul = document.createElement("ul");
+  sources.forEach(url=>{
+    const li = document.createElement("li");
+    li.innerHTML = `<a href="${url}" target="_blank">${url}</a>`;
+    ul.appendChild(li);
+    extractKeywordsFromText(url, user, keywords);
+  });
+  dynamicSection.appendChild(document.createElement("hr"));
+  dynamicSection.innerHTML += "<h3>External Sources</h3>";
+  dynamicSection.appendChild(ul);
+}
+
+// --- MAIN FUNCTION ---
+(async function(){
+  const userKeywords = {};
+  listExternalSources(userKeywords);
+  await loadGitHub(userKeywords);
+  await loadKrySearch(userKeywords);
+  window.userKeywordCache[user] = {...userKeywords};
+  displayKeywordConfidence(userKeywords);
+  displayCrossUserCorrelation(userKeywords);
+})();
+</script>
+
 </body>
 </html>
