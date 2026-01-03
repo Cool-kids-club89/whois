@@ -1,93 +1,77 @@
-import { loadGitHub } from './modules/github.js';
-import { loadMusicOSINT } from './modules/music.js';
-import { detectPrimaryBioSite } from './modules/bio.js';
-import { detectAliases, displayAliases } from './modules/aliases.js';
-import { buildFingerprint, displayFingerprint, inferPersona } from './modules/fingerprint.js';
-import { clusterUsers, displayClusters, matchFingerprints } from './modules/clustering.js';
-import { buildGraph, renderGraph } from './modules/graph.js';
-import { extractKeywords, displayKeywordConfidence, scoreSource, applyDecay, displaySourceConfidence } from './modules/display.js';
+import { showUserProfile } from './modules/user.js';
+import { extractKeywords, scoreSource, displayKeywordConfidence, displaySourceConfidence, applyDecay } from './modules/display.js';
+import { detectAliases } from './modules/aliases.js';
 
-/* =========================
-   GLOBAL STATE
-========================= */
 const input = document.getElementById("usernameInput");
 const btn = document.getElementById("searchBtn");
 const result = document.getElementById("result");
 
 window.userKeywordCache = {};
 window.userFingerprints = {};
-window.userClusters = {};
 window.sourceConfidence = {};
 window.aliasCandidates = new Set();
-window.graphNodes = [];
-window.graphLinks = [];
 
-/* =========================
-   MAIN ENTRY
-========================= */
 btn.onclick = async () => {
   const user = input.value.trim();
   if (!user) return;
 
   resetState();
-  result.innerHTML = `<h2>OSINT REPORT: ${user}</h2>`;
-  const keywords = {};
+  result.innerHTML = `<h2>WHOIS Report: ${user}</h2>`;
 
-  detectAliases(user);
+  // -------------------------
+  // Show user profile
+  // -------------------------
+  const profile = await showUserProfile(user, result);
 
-  await loadGitHub(user, keywords);
-  await loadMusicOSINT(user, keywords);
-  await detectPrimaryBioSite(user, keywords);
+  // -------------------------
+  // Fetch local individual page
+  // -------------------------
+  try {
+    const res = await fetch(`individual/${user}`);
+    if (res.ok) {
+      const html = await res.text();
+      result.innerHTML += `<section><h3>Local Individual Page</h3>${html}</section>`;
+      extractKeywords(html, user, window.userKeywordCache[user] = {});
+      scoreSource("Local Individual Page", window.userKeywordCache[user]);
+    }
+  } catch {}
 
-  buildFingerprint(user, keywords);
-  inferPersona(keywords);
+  // -------------------------
+  // Fetch GitHub organizations pages
+  // -------------------------
+  if (profile.github?.orgs?.length) {
+    for (const org of profile.github.orgs) {
+      try {
+        const res = await fetch(`org/${org}`);
+        if (res.ok) {
+          const html = await res.text();
+          result.innerHTML += `<section><h3>Organization: ${org}</h3>${html}</section>`;
+          extractKeywords(html, org, window.userKeywordCache[org] = {});
+          scoreSource("Organization Page", window.userKeywordCache[org]);
+        }
+      } catch {}
+    }
+  }
 
-  window.userKeywordCache[user] = keywords;
-  window.userFingerprints[user] = window.fingerprintProfile;
-
-  clusterUsers();
-  matchFingerprints();
+  // -------------------------
+  // Display keyword confidence and source confidence
+  // -------------------------
+  displayKeywordConfidence(window.userKeywordCache[user]);
   applyDecay();
-
-  displayAliases();
-  displayKeywordConfidence(keywords);
   displaySourceConfidence();
-  displayClusters();
-  displayFingerprint();
 
-  buildGraph(user);
-  renderGraph();
+  // -------------------------
+  // Display alias list
+  // -------------------------
+  detectAliases(user);
+  if (window.aliasCandidates.size) {
+    result.innerHTML += `<section><h3>Aliases</h3><ul>${[...window.aliasCandidates].map(a => `<li>${a}</li>`).join("")}</ul></section>`;
+  }
 };
 
-/* =========================
-   RESET
-========================= */
 function resetState() {
+  window.userKeywordCache = {};
+  window.userFingerprints = {};
   window.sourceConfidence = {};
   window.aliasCandidates.clear();
-  window.graphNodes = [];
-  window.graphLinks = [];
-}
-
-/* =========================
-   EXPORT
-========================= */
-window.exportJSON = function() {
-  const blob = new Blob([JSON.stringify({
-    fingerprints: window.userFingerprints,
-    clusters: window.userClusters,
-    confidence: window.sourceConfidence,
-    aliases: [...window.aliasCandidates]
-  }, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "osint-report.json";
-  a.click();
-}
-
-window.exportHTML = function() {
-  const w = window.open("");
-  w.document.write(`<html><body>${result.innerHTML}</body></html>`);
-  w.document.close();
-  w.print();
 }
