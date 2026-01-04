@@ -1,4 +1,3 @@
-// modules/user.js
 export async function showUserProfile(username, container) {
   container.innerHTML = `<h2>${username}</h2><p>Loading profile...</p>`;
   const profile = { aliases: [], links: [], music: [], github: {}, pronouns: null, image: null, banner: null, badges: [], email: null, organizations: [] };
