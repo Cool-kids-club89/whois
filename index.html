@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WHOIS Lookup</title>
   <link rel="stylesheet" href="style.css">
-  <script type="module" src="search.js" defer></script>
+  <script type="module" src="user.js" defer></script>
+  <script type="module" src="org.js" defer></script>
 </head>
 <body>
   <div class="container">
@@ -17,27 +18,22 @@
     <div id="result" class="profile-container"></div>
   </div>
 
-  <script>
+  <script type="module">
+    import { buildUserProfile } from './user.js';
+    import { buildOrgProfile } from './org.js';
+
     const input = document.getElementById("inputSearch");
     const btn = document.getElementById("searchBtn");
     const result = document.getElementById("result");
 
-    // Get URL parameters
-    function getParams() {
-      const urlParams = new URLSearchParams(window.location.search);
-      return {
-        user: urlParams.get("user"),
-        user2: urlParams.get("user2"),
-        org: urlParams.get("org"),
-      };
-    }
+    // Get URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const userParam = urlParams.get("user");
+    const orgParam = urlParams.get("org");
 
-    const params = getParams();
-
-    // Auto-trigger searches if parameters exist
-    if (params.user) search("user", params.user);
-    if (params.user2) search("user", params.user2);
-    if (params.org) search("org", params.org);
+    // Auto-search from URL
+    if (userParam) search("user", userParam);
+    if (orgParam) search("org", orgParam);
 
     btn.onclick = () => {
       const searchTerm = input.value.trim();
@@ -47,124 +43,14 @@
     };
 
     async function search(type, name) {
-      result.innerHTML += `<h2>WHOIS Lookup for: ${name}</h2>`;
+      result.innerHTML += `<h2>WHOIS Lookup: ${name}</h2>`;
 
       if (type === "user") {
-        await fetchUser(name);
+        await buildUserProfile(name, result);
       } else if (type === "org") {
-        await fetchOrg(name);
+        await buildOrgProfile(name, result);
       }
     }
-
-    // --- USER LOOKUP ---
-    async function fetchUser(username) {
-      result.innerHTML += `<p>Loading user data...</p>`;
-
-      let profile = {};
-      try {
-        // GitHub API
-        const res = await fetch(`https://api.github.com/users/${username}`);
-        if (res.ok) {
-          const data = await res.json();
-          profile.github = {
-            username: data.login,
-            bio: data.bio,
-            public_repos: data.public_repos,
-            email: data.email,
-            html_url: data.html_url,
-          };
-        }
-
-        // Incrementally render
-        if (profile.github) {
-          result.innerHTML += `<section>
-            <h3>User Overview</h3>
-            <p><strong>Username:</strong> ${profile.github.username}</p>
-            <p><strong>Bio:</strong> ${profile.github.bio || "No bio"}</p>
-            <p><strong>Email:</strong> ${profile.github.email || "No public email"}</p>
-            <p><strong>Public Repos:</strong> ${profile.github.public_repos || 0}</p>
-            <p><strong>Profile URL:</strong> <a href="${profile.github.html_url}" target="_blank">${profile.github.html_url}</a></p>
-          </section>`;
-        }
-
-        // OPSEC rating based on PII exposure
-        let opsec = "Good OPSEC";
-        if (profile.github?.email || profile.github?.public_repos > 50) opsec = "Medium OPSEC";
-        if (profile.github?.email && profile.github?.public_repos > 50) opsec = "Bad OPSEC";
-        result.innerHTML += `<p><strong>Privacy & Security Rating:</strong> ${opsec}</p>`;
-
-      } catch (err) {
-        result.innerHTML += `<p>Error fetching user data: ${err.message}</p>`;
-        console.error(err);
-      }
-    }
-
-    // --- ORGANIZATION LOOKUP ---
-    async function fetchOrg(orgName) {
-      result.innerHTML += `<p>Loading organization data...</p>`;
-
-      try {
-        // Organization info
-        const orgRes = await fetch(`https://api.github.com/orgs/${orgName}`);
-        if (!orgRes.ok) throw new Error("Organization not found");
-        const orgData = await orgRes.json();
-
-        result.innerHTML += `<section>
-          <h3>Organization Overview</h3>
-          <p><strong>Name:</strong> ${orgData.login}</p>
-          <p><strong>Description:</strong> ${orgData.description || "No description available"}</p>
-          <p><strong>Website:</strong> <a href="${orgData.blog}" target="_blank">${orgData.blog || "No website available"}</a></p>
-        </section>`;
-
-        // Org page README.md
-        try {
-          const readmeRes = await fetch(`https://raw.githubusercontent.com/${orgName}/${orgName}/main/README.md`);
-          if (readmeRes.ok) {
-            const readmeText = await readmeRes.text();
-            result.innerHTML += `<section>
-              <h3>Organization README.md</h3>
-              <pre>${escapeHtml(readmeText)}</pre>
-            </section>`;
-          } else {
-            result.innerHTML += `<p>No README.md found on organization page.</p>`;
-          }
-        } catch {}
-
-        // Members
-        const membersRes = await fetch(`https://api.github.com/orgs/${orgName}/members`);
-        if (membersRes.ok) {
-          const members = await membersRes.json();
-          if (members.length) {
-            result.innerHTML += `<section>
-              <h3>Members</h3>
-              <ul>${members.map(m => `<li>${m.login}</li>`).join("")}</ul>
-            </section>`;
-          }
-        }
-
-        // OPSEC rating based on number of members and repos
-        const repoRes = await fetch(orgData.repos_url);
-        let repos = [];
-        if (repoRes.ok) repos = await repoRes.json();
-
-        let opsec = "Good OPSEC";
-        if (repos.length > 10 || (membersRes.ok && (await membersRes.json()).length > 20)) opsec = "Bad OPSEC";
-        else if (repos.length > 5) opsec = "Medium OPSEC";
-
-        result.innerHTML += `<p><strong>Privacy & Security Rating:</strong> ${opsec}</p>`;
-
-      } catch (err) {
-        result.innerHTML += `<p>Error fetching organization data: ${err.message}</p>`;
-        console.error(err);
-      }
-    }
-
-    function escapeHtml(text) {
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
   </script>
 </body>
 </html>
