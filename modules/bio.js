@@ -1,6 +1,4 @@
-import { extractKeywords, scoreSource } from './display.js';
-
-export async function detectPrimaryBioSite(user, keywords) {
+export function detectPrimaryBioSite(user, keywords) {
   const sites = [
     `https://${user}.carrd.co`,
     `https://about${user}.carrd.co`,
@@ -10,8 +8,11 @@ export async function detectPrimaryBioSite(user, keywords) {
   const found = [];
   for (const s of sites) {
     try {
-      if ((await fetch(s, { method: "HEAD" })).ok) found.push(s);
-    } catch {}
+      const res = await fetch(corsProxyUrl + encodeURIComponent(s), { method: "HEAD" });
+      if (res.ok) found.push(s);
+    } catch (error) {
+      console.warn("Error with CORS-proxied request:", error);
+    }
   }
 
   if (found.length) {
@@ -24,7 +25,7 @@ export async function detectPrimaryBioSite(user, keywords) {
       </section>
     `;
     document.getElementById("result").innerHTML += html;
-    found.forEach(f => extractKeywords(f, user, keywords));
+    found.forEach(f => extractKeywords(f, user, keywords || {}));  // Add check for keywords
   }
-  scoreSource("Bio", keywords);
+  scoreSource("Bio", keywords || {});  // Add fallback for keywords
 }
