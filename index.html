@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <script type="module" src="user.js" defer></script>
   <script type="module" src="org.js" defer></script>
+  <script type="module" src="search.js" defer></script>
 </head>
 <body>
   <div class="container">
@@ -17,40 +18,5 @@
     </div>
     <div id="result" class="profile-container"></div>
   </div>
-
-  <script type="module">
-    import { buildUserProfile } from './user.js';
-    import { buildOrgProfile } from './org.js';
-
-    const input = document.getElementById("inputSearch");
-    const btn = document.getElementById("searchBtn");
-    const result = document.getElementById("result");
-
-    // Get URL params
-    const urlParams = new URLSearchParams(window.location.search);
-    const userParam = urlParams.get("user");
-    const orgParam = urlParams.get("org");
-
-    // Auto-search from URL
-    if (userParam) search("user", userParam);
-    if (orgParam) search("org", orgParam);
-
-    btn.onclick = () => {
-      const searchTerm = input.value.trim();
-      if (!searchTerm) return;
-      const type = searchTerm.includes("/") ? "org" : "user";
-      search(type, searchTerm);
-    };
-
-    async function search(type, name) {
-      result.innerHTML += `<h2>WHOIS Lookup: ${name}</h2>`;
-
-      if (type === "user") {
-        await buildUserProfile(name, result);
-      } else if (type === "org") {
-        await buildOrgProfile(name, result);
-      }
-    }
-  </script>
 </body>
 </html>
