@@ -39,22 +39,22 @@ btn.onclick = async () => {
 
 // Dynamically import and run all .js modules (excluding templates)
 async function loadModules(user) {
-  const moduleContext = require.context('./modules/', false, /\.js$/);  // Get all .js files in modules directory
-  
-  for (const fileName of moduleContext.keys()) {
+  // Fetch all files in the 'modules' folder and dynamically import them
+  const moduleFiles = await fetchModuleFiles();
+
+  for (const fileName of moduleFiles) {
     // Skip files that contain 'template' in the name
     if (fileName.includes('template')) continue;
 
     try {
-      // Dynamically import the module
-      const module = await import(`${fileName}`);
+      // Dynamically import the module (based on the file name)
+      const module = await import(`./modules/${fileName}`);
       
-      // Check if the module exports a function that can be called
+      // Call relevant functions if they exist in the module
       if (typeof module.showUserProfile === 'function') {
         await module.showUserProfile(user, result);  // Call showUserProfile if it exists
       }
       // Add any other functions you want to invoke based on the module's structure
-      // Example:
       if (typeof module.loadGitHub === 'function') {
         await module.loadGitHub(user, window.userKeywordCache[user]); // Call loadGitHub if available
       }
@@ -62,6 +62,13 @@ async function loadModules(user) {
       console.warn(`Failed to load module ${fileName}:`, error);
     }
   }
+}
+
+async function fetchModuleFiles() {
+  // Fetch a list of all JavaScript files in the 'modules' folder
+  const response = await fetch('./modules/moduleList.json'); // Assuming you create a module list
+  const moduleList = await response.json();
+  return moduleList.files; // This JSON should contain an array of filenames, e.g. ["user.js", "github.js"]
 }
 
 function resetState() {
