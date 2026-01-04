@@ -27,7 +27,7 @@ btn.onclick = async () => {
   resetState();
   result.innerHTML = `<h2>Search Results for: ${user}</h2>`;
 
-  // Dynamically load and run all .js modules
+  // Dynamically load and run all .js modules based on the module list from JSON
   await loadModules(user);
 
   // Display the result for GitHub user (or whatever other modules might add data)
@@ -39,7 +39,7 @@ btn.onclick = async () => {
 
 // Dynamically import and run all .js modules (excluding templates)
 async function loadModules(user) {
-  // Fetch all files in the 'modules' folder and dynamically import them
+  // Fetch the list of module files from moduleList.json
   const moduleFiles = await fetchModuleFiles();
 
   for (const fileName of moduleFiles) {
@@ -65,10 +65,17 @@ async function loadModules(user) {
 }
 
 async function fetchModuleFiles() {
-  // Fetch a list of all JavaScript files in the 'modules' folder
-  const response = await fetch('./modules/moduleList.json'); // Assuming you create a module list
-  const moduleList = await response.json();
-  return moduleList.files; // This JSON should contain an array of filenames, e.g. ["user.js", "github.js"]
+  try {
+    const response = await fetch('./modules/moduleList.json');  // Fetch module list JSON
+    if (!response.ok) {
+      throw new Error('Failed to fetch module list.');
+    }
+    const moduleList = await response.json();
+    return moduleList.files;  // This should return the "files" array from the JSON
+  } catch (error) {
+    console.error("Error fetching module list:", error);
+    return [];  // Return an empty array if there's an error fetching the JSON
+  }
 }
 
 function resetState() {
