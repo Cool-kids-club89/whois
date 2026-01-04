@@ -16,5 +16,117 @@
     </div>
     <div id="result" class="profile-container"></div>
   </div>
+
+  <script>
+    const input = document.getElementById("usernameInput");
+    const btn = document.getElementById("searchBtn");
+    const result = document.getElementById("result");
+
+    btn.onclick = async () => {
+      const user = input.value.trim();
+      if (!user) return;
+      
+      result.innerHTML = `<h2>WHOIS Report: ${user}</h2>`;
+
+      // Reset the result area
+      result.innerHTML = `<h2>WHOIS Report: ${user}</h2><p>Loading...</p>`;
+
+      // Fetch User Profile Data Dynamically
+      const profile = await fetchProfile(user);
+
+      if (!profile) {
+        result.innerHTML += `<p>No profile data found for ${user}.</p>`;
+        return;
+      }
+
+      // Display the profile data dynamically
+      result.innerHTML = `<h2>WHOIS Report: ${user}</h2>`;
+      
+      // Add Profile Info
+      result.innerHTML += `
+        <section>
+          <h3>Profile Overview</h3>
+          <p><strong>Description:</strong> ${profile.description || "No description available."}</p>
+          <p><strong>Known Aliases:</strong> ${profile.aliases.join(", ")}</p>
+        </section>
+      `;
+
+      // Add Links (GitHub, Carrd, etc.)
+      result.innerHTML += `
+        <section>
+          <h3>Links</h3>
+          <ul>
+            ${profile.links.map(link => `<li><a href="${link.url}" target="_blank">${link.name}</a></li>`).join('')}
+          </ul>
+        </section>
+      `;
+
+      // Add Music Profiles (Last.fm or Libre.fm)
+      if (profile.music) {
+        result.innerHTML += `
+          <section>
+            <h3>Music Profiles</h3>
+            <ul>
+              ${profile.music.map(music => `<li><a href="${music.url}" target="_blank">${music.platform} — ${music.username}</a></li>`).join('')}
+            </ul>
+          </section>
+        `;
+      }
+
+      // Optionally Add GitHub and Other API Data
+      if (profile.github) {
+        result.innerHTML += `
+          <section>
+            <h3>GitHub</h3>
+            <p><strong>Username:</strong> ${profile.github.username}</p>
+            <p><strong>Bio:</strong> ${profile.github.bio}</p>
+            <p><strong>Public Repos:</strong> ${profile.github.public_repos}</p>
+          </section>
+        `;
+      }
+    };
+
+    async function fetchProfile(username) {
+      const profiles = {
+        "4zx16": {
+          description: "Underground Developer & Gray-Hat Technologist • Visibility: Low-Medium",
+          aliases: ["4zx16", "not4zx16", "DarkShadow5352", "Dark Knight", "Bluishparrot70"],
+          links: [
+            { name: "GitHub", url: "https://github.com/4zx16" },
+            { name: "Carrd", url: "https://about4zx16.carrd.co/" },
+            { name: "Krynet", url: "https://4zx16.github.io/Krynet/" }
+          ],
+          music: [
+            { platform: "Last.fm", username: "l4zx16", url: "https://last.fm/user/l4zx16" }
+          ],
+          github: {
+            username: "4zx16",
+            bio: "Cybersecurity expert, game developer, and hacker.",
+            public_repos: 10
+          }
+        },
+        "7zh14": {
+          description: "Developer • OSINT-Referenced Identity • Multimedia & Systems",
+          aliases: ["7zh14", "sevenzh14"],
+          links: [
+            { name: "GitHub", url: "https://github.com/7zh14" },
+            { name: "Carrd", url: "https://7zh14.carrd.co" },
+            { name: "SoundCloud", url: "https://soundcloud.com/7zh14s" },
+            { name: "Twitch", url: "https://www.twitch.tv/7zh14" }
+          ],
+          music: [
+            { platform: "Last.fm", username: "sevenzh14", url: "https://last.fm/user/sevenzh14" }
+          ],
+          github: {
+            username: "7zh14",
+            bio: "Multimedia Developer with a focus on security.",
+            public_repos: 15
+          }
+        }
+      };
+
+      return profiles[username] || null; // Return profile data for the username
+    }
+  </script>
 </body>
 </html>
