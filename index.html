@@ -27,7 +27,6 @@
     const userParam = urlParams.get('user');
     const user2Param = urlParams.get('user2');
 
-    // If user parameters exist, skip input and search automatically
     if (userParam) {
       fetchProfileData(userParam, user2Param);
     }
@@ -104,7 +103,7 @@
         `;
       }
 
-      // Search Results Section (if any)
+      // Search Results Section (for PII and sensitive info)
       if (profile.searchResults) {
         result.innerHTML += `
           <section>
@@ -120,33 +119,52 @@
       profile.opsecRating = "Unknown"; // Default OPSEC rating
 
       try {
-        // Fetch GitHub Profile
-        const githubRes = await fetch(`https://api.github.com/users/${username}`);
-        if (githubRes.ok) {
-          const gh = await githubRes.json();
-          profile.github = {
-            username: gh.login,
-            bio: gh.bio,
-            email: gh.email || "Not available", // Check if email is public
-            public_repos: gh.public_repos
-          };
-          profile.pronouns = extractPronouns(gh.bio); // Try to extract pronouns from bio
-          evaluateOPSEC(profile, "github");
-        }
+        // Step 1: Check Local Profiles (Fallback Data)
+        const localProfiles = {
+          "4zx16": { 
+            description: "Underground Developer & Gray-Hat Technologist", 
+            aliases: ["4zx16"], 
+            links: [{name: "GitHub", url: "https://github.com/4zx16"}] 
+          },
+          "7zh14": { 
+            description: "Multimedia Dev & Security Enthusiast", 
+            aliases: ["7zh14"], 
+            links: [{name: "GitHub", url: "https://github.com/7zh14"}] 
+          }
+        };
 
-        // Fetch Social Media Profiles (mocked for now)
-        const socialMediaRes = await fetch(`https://api.socialsearch.com/?username=${username}`);
-        if (socialMediaRes.ok) {
-          const social = await socialMediaRes.json();
-          profile.social = social;  // Mocked response, assume it returns social media profiles
-          evaluateOPSEC(profile, "social");
-        }
+        profile = localProfiles[username] || {};  // Merge local data if available
 
-        // Search engine results for mentions of the user
-        const searchRes = await fetch(`https://www.duckduckgo.com/?q=${username}`);
-        if (searchRes.ok) {
-          const searchData = await searchRes.text();
-          profile.searchResults = searchData;  // Placeholder for parsed results
+        if (Object.keys(profile).length === 0) {  // If no local profile, proceed with OSINT fetch
+          // Fetch GitHub Profile
+          const githubRes = await fetch(`https://api.github.com/users/${username}`);
+          if (githubRes.ok) {
+            const gh = await githubRes.json();
+            profile.github = {
+              username: gh.login,
+              bio: gh.bio,
+              email: gh.email || "Not available", // Check if email is public
+              public_repos: gh.public_repos
+            };
+            profile.pronouns = extractPronouns(gh.bio); // Try to extract pronouns from bio
+            evaluateOPSEC(profile, "github");
+          }
+
+          // Fetch Social Media Profiles (mocked for now)
+          const socialMediaRes = await fetch(`https://api.socialsearch.com/?username=${username}`);
+          if (socialMediaRes.ok) {
+            const social = await socialMediaRes.json();
+            profile.social = social;  // Mocked response, assume it returns social media profiles
+            evaluateOPSEC(profile, "social");
+          }
+
+          // Search engine results for mentions of the user
+          const searchRes = await fetch(`https://www.duckduckgo.com/?q=${username}`);
+          if (searchRes.ok) {
+            const searchData = await searchRes.text();
+            profile.searchResults = searchData;  // Placeholder for parsed results
+            evaluateSensitiveInfo(profile);
+          }
         }
 
         // Calculate OPSEC Rating based on gathered info
@@ -169,7 +187,7 @@
       // Evaluate OPSEC based on the amount of data found on a platform
       if (platform === "github" && profile.github.public_repos > 5) {
         profile.opsecRating = "Bad OPSEC";
-      } else if (platform === "social" && profile.social.length > 3) {
+      } else if (platform === "social" && profile.social?.length > 3) {
         profile.opsecRating = "Bad OPSEC";
       }
     }
@@ -183,6 +201,15 @@
         return "Medium OPSEC";
       }
       return "Good OPSEC";  // Minimal information exposed
+    }
+
+    function evaluateSensitiveInfo(profile) {
+      // Check if sensitive info is exposed, e.g., phone number, email, etc.
+      const sensitiveInfoRegex = /\b(\d{3}-\d{2}-\d{4}|\d{10}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4})\b/i;
+      const match = profile.searchResults?.match(sensitiveInfoRegex);
+      if (match) {
+        profile.opsecRating = "Bad OPSEC";  // Flag sensitive info
+      }
     }
   </script>
 </body>
