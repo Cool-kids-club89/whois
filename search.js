@@ -33,6 +33,9 @@ btn.onclick = async () => {
   // Display the result for GitHub user (or whatever other modules might add data)
   await loadGitHub(user, window.userKeywordCache[user]);
 
+  // Fetch and display the local individual page if it exists
+  await fetchLocalPage(user);
+
   // Show user profile details
   await showUserProfile(user, result);
 };
@@ -75,6 +78,26 @@ async function fetchModuleFiles() {
   } catch (error) {
     console.error("Error fetching module list:", error);
     return [];  // Return an empty array if there's an error fetching the JSON
+  }
+}
+
+// Fetch the local individual page for the user
+async function fetchLocalPage(username) {
+  try {
+    const response = await fetch(`individual/${username}.html`);
+    if (response.ok) {
+      const html = await response.text();
+      result.innerHTML += `
+        <section>
+          <h3>Local Individual Page</h3>
+          <div>${html}</div>
+        </section>
+      `;
+    } else {
+      console.warn(`Local page for ${username} not found.`);
+    }
+  } catch (error) {
+    console.warn(`Error fetching local page for ${username}:`, error);
   }
 }
 
