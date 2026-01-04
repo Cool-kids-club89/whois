@@ -3,215 +3,168 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Full OSINT Lookup</title>
+  <title>WHOIS Lookup</title>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="search.js" defer></script>
 </head>
 <body>
   <div class="container">
-    <h1>Full OSINT Lookup</h1>
+    <h1>WHOIS Lookup</h1>
     <div class="search-box">
-      <input type="text" id="usernameInput" placeholder="Enter username (e.g., 4zx16)">
+      <input type="text" id="inputSearch" placeholder="Enter username or organization name">
       <button id="searchBtn">Search</button>
     </div>
     <div id="result" class="profile-container"></div>
   </div>
 
   <script>
-    const input = document.getElementById("usernameInput");
+    const input = document.getElementById("inputSearch");
     const btn = document.getElementById("searchBtn");
     const result = document.getElementById("result");
 
-    btn.onclick = async () => {
-      const user = input.value.trim();
-      if (!user) return;
+    // Get URL parameters
+    function getParams() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return {
+        user: urlParams.get("user"),
+        user2: urlParams.get("user2"),
+        org: urlParams.get("org"),
+      };
+    }
 
-      result.innerHTML = `<h2>OSINT Lookup: ${user}</h2><p>Gathering data...</p>`;
+    const params = getParams();
 
-      // Fetch Profile using OSINT methods, including modules from search.js
-      const profile = await fetchProfileData(user);
+    // Auto-trigger searches if parameters exist
+    if (params.user) search("user", params.user);
+    if (params.user2) search("user", params.user2);
+    if (params.org) search("org", params.org);
 
-      if (!profile) {
-        result.innerHTML += `<p>No data found for ${user}.</p>`;
-        return;
-      }
-
-      displayProfile(user, profile);
+    btn.onclick = () => {
+      const searchTerm = input.value.trim();
+      if (!searchTerm) return;
+      const type = searchTerm.includes("/") ? "org" : "user";
+      search(type, searchTerm);
     };
 
-    // Display Profile Data
-    function displayProfile(user, profile) {
-      result.innerHTML = `<h2>Profile for: ${user}</h2>`;
+    async function search(type, name) {
+      result.innerHTML += `<h2>WHOIS Lookup for: ${name}</h2>`;
 
-      // Profile Overview Section
-      result.innerHTML += `
-        <section>
-          <h3>Profile Overview</h3>
-          <p><strong>Description:</strong> ${profile.description || "No description available."}</p>
-          <p><strong>Known Aliases:</strong> ${(profile.aliases || []).join(", ") || "None"}</p>
-          <p><strong>Pronouns:</strong> ${profile.pronouns || "Not available"}</p>
-          <p><strong>Email:</strong> ${profile.email || "Not available"}</p>
-          <p><strong>Privacy & Security Rating:</strong> ${profile.opsecRating}</p>
-        </section>
-      `;
-
-      // Links Section
-      if (profile.links?.length) {
-        result.innerHTML += `
-          <section>
-            <h3>Links</h3>
-            <ul>
-              ${profile.links.map(l => `<li><a href="${l.url}" target="_blank">${l.name}</a></li>`).join("")}
-            </ul>
-          </section>
-        `;
+      if (type === "user") {
+        await fetchUser(name);
+      } else if (type === "org") {
+        await fetchOrg(name);
       }
+    }
 
-      // GitHub Section
-      if (profile.github) {
-        result.innerHTML += `
-          <section>
-            <h3>GitHub</h3>
+    // --- USER LOOKUP ---
+    async function fetchUser(username) {
+      result.innerHTML += `<p>Loading user data...</p>`;
+
+      let profile = {};
+      try {
+        // GitHub API
+        const res = await fetch(`https://api.github.com/users/${username}`);
+        if (res.ok) {
+          const data = await res.json();
+          profile.github = {
+            username: data.login,
+            bio: data.bio,
+            public_repos: data.public_repos,
+            email: data.email,
+            html_url: data.html_url,
+          };
+        }
+
+        // Incrementally render
+        if (profile.github) {
+          result.innerHTML += `<section>
+            <h3>User Overview</h3>
             <p><strong>Username:</strong> ${profile.github.username}</p>
             <p><strong>Bio:</strong> ${profile.github.bio || "No bio"}</p>
-            <p><strong>Email:</strong> ${profile.github.email || "Not available"}</p>
+            <p><strong>Email:</strong> ${profile.github.email || "No public email"}</p>
             <p><strong>Public Repos:</strong> ${profile.github.public_repos || 0}</p>
-          </section>
-        `;
-      }
-
-      // Social Media Section
-      if (profile.social) {
-        result.innerHTML += `
-          <section>
-            <h3>Social Media</h3>
-            <ul>
-              ${profile.social.map(s => `<li><a href="${s.url}" target="_blank">${s.platform} — ${s.username}</a></li>`).join("")}
-            </ul>
-          </section>
-        `;
-      }
-
-      // Search Results Section (for PII and sensitive info)
-      if (profile.searchResults) {
-        result.innerHTML += `
-          <section>
-            <h3>Search Results</h3>
-            <p>${profile.searchResults}</p>
-          </section>
-        `;
-      }
-    }
-
-    // Fetch Profile Data (Including modules from search.js)
-    async function fetchProfileData(username) {
-      let profile = {};
-
-      try {
-        // First check for local profile (fallback)
-        const localProfiles = {
-          "4zx16": { 
-            description: "Underground Developer & Gray-Hat Technologist", 
-            aliases: ["4zx16"], 
-            links: [{name: "GitHub", url: "https://github.com/4zx16"}] 
-          },
-          "7zh14": { 
-            description: "Multimedia Dev & Security Enthusiast", 
-            aliases: ["7zh14"], 
-            links: [{name: "GitHub", url: "https://github.com/7zh14"}] 
-          }
-        };
-
-        profile = localProfiles[username] || {};  // Merge local profile if available
-
-        // Use search.js modules for OSINT data (Web scraping, social media search, etc.)
-        const githubData = await fetchGitHubData(username);
-        if (githubData) {
-          profile.github = githubData;
-          evaluateOPSEC(profile, "github");
+            <p><strong>Profile URL:</strong> <a href="${profile.github.html_url}" target="_blank">${profile.github.html_url}</a></p>
+          </section>`;
         }
 
-        const socialMediaData = await searchSocialMedia(username);
-        if (socialMediaData) {
-          profile.social = socialMediaData;
-          evaluateOPSEC(profile, "social");
-        }
-
-        // Search engine results (DuckDuckGo, etc.)
-        const searchData = await searchWeb(username);
-        if (searchData) {
-          profile.searchResults = searchData;
-          evaluateSensitiveInfo(profile);
-        }
-
-        // Set OPSEC Rating
-        profile.opsecRating = calculateOPSECRating(profile);
+        // OPSEC rating based on PII exposure
+        let opsec = "Good OPSEC";
+        if (profile.github?.email || profile.github?.public_repos > 50) opsec = "Medium OPSEC";
+        if (profile.github?.email && profile.github?.public_repos > 50) opsec = "Bad OPSEC";
+        result.innerHTML += `<p><strong>Privacy & Security Rating:</strong> ${opsec}</p>`;
 
       } catch (err) {
-        console.error("Error fetching OSINT data:", err);
-      }
-
-      return Object.keys(profile).length ? profile : null;
-    }
-
-    async function fetchGitHubData(username) {
-      const response = await fetch(`https://api.github.com/users/${username}`);
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          username: data.login,
-          bio: data.bio,
-          email: data.email || "Not available", 
-          public_repos: data.public_repos
-        };
-      }
-      return null;
-    }
-
-    async function searchSocialMedia(username) {
-      // Utilize the social media search module from search.js
-      const socialMediaData = await searchSocial(username);  // Assuming `searchSocial` is defined in search.js
-      return socialMediaData || null;
-    }
-
-    async function searchWeb(username) {
-      // Use search engine scraping from search.js
-      const searchResults = await searchWebScrape(username);  // Assuming `searchWebScrape` is defined in search.js
-      return searchResults || null;
-    }
-
-    // Utility Functions (for OPSEC)
-    function extractPronouns(bio) {
-      const pronounsRegex = /\b(he|she|they|ze|xe|it|we|you|us)\b/i;
-      const match = bio?.match(pronounsRegex);
-      return match ? match[0] : null;
-    }
-
-    function evaluateOPSEC(profile, platform) {
-      if (platform === "github" && profile.github.public_repos > 5) {
-        profile.opsecRating = "Bad OPSEC";
-      } else if (platform === "social" && profile.social?.length > 3) {
-        profile.opsecRating = "Bad OPSEC";
+        result.innerHTML += `<p>Error fetching user data: ${err.message}</p>`;
+        console.error(err);
       }
     }
 
-    function calculateOPSECRating(profile) {
-      const infoCount = Object.keys(profile).length;
-      if (infoCount > 5) {
-        return "Bad OPSEC";  // Too much exposed info
-      } else if (infoCount > 2) {
-        return "Medium OPSEC";
+    // --- ORGANIZATION LOOKUP ---
+    async function fetchOrg(orgName) {
+      result.innerHTML += `<p>Loading organization data...</p>`;
+
+      try {
+        // Organization info
+        const orgRes = await fetch(`https://api.github.com/orgs/${orgName}`);
+        if (!orgRes.ok) throw new Error("Organization not found");
+        const orgData = await orgRes.json();
+
+        result.innerHTML += `<section>
+          <h3>Organization Overview</h3>
+          <p><strong>Name:</strong> ${orgData.login}</p>
+          <p><strong>Description:</strong> ${orgData.description || "No description available"}</p>
+          <p><strong>Website:</strong> <a href="${orgData.blog}" target="_blank">${orgData.blog || "No website available"}</a></p>
+        </section>`;
+
+        // Org page README.md
+        try {
+          const readmeRes = await fetch(`https://raw.githubusercontent.com/${orgName}/${orgName}/main/README.md`);
+          if (readmeRes.ok) {
+            const readmeText = await readmeRes.text();
+            result.innerHTML += `<section>
+              <h3>Organization README.md</h3>
+              <pre>${escapeHtml(readmeText)}</pre>
+            </section>`;
+          } else {
+            result.innerHTML += `<p>No README.md found on organization page.</p>`;
+          }
+        } catch {}
+
+        // Members
+        const membersRes = await fetch(`https://api.github.com/orgs/${orgName}/members`);
+        if (membersRes.ok) {
+          const members = await membersRes.json();
+          if (members.length) {
+            result.innerHTML += `<section>
+              <h3>Members</h3>
+              <ul>${members.map(m => `<li>${m.login}</li>`).join("")}</ul>
+            </section>`;
+          }
+        }
+
+        // OPSEC rating based on number of members and repos
+        const repoRes = await fetch(orgData.repos_url);
+        let repos = [];
+        if (repoRes.ok) repos = await repoRes.json();
+
+        let opsec = "Good OPSEC";
+        if (repos.length > 10 || (membersRes.ok && (await membersRes.json()).length > 20)) opsec = "Bad OPSEC";
+        else if (repos.length > 5) opsec = "Medium OPSEC";
+
+        result.innerHTML += `<p><strong>Privacy & Security Rating:</strong> ${opsec}</p>`;
+
+      } catch (err) {
+        result.innerHTML += `<p>Error fetching organization data: ${err.message}</p>`;
+        console.error(err);
       }
-      return "Good OPSEC";  // Minimal exposed info
     }
 
-    function evaluateSensitiveInfo(profile) {
-      const sensitiveInfoRegex = /\b(\d{3}-\d{2}-\d{4}|\d{10}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4})\b/i;
-      const match = profile.searchResults?.match(sensitiveInfoRegex);
-      if (match) {
-        profile.opsecRating = "Bad OPSEC";
-      }
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
     }
+
   </script>
 </body>
 </html>
