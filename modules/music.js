@@ -12,17 +12,32 @@ export async function loadMusicOSINT(user, keywords) {
   
   for (const site of sites) {
     try {
-      const url = `https://${site}/user/${user}`;
+      let url;
+      if (site === "last.fm") {
+        // Construct Last.fm URL
+        url = `https://www.last.fm/user/${user}`;
+      } else if (site === "libre.fm") {
+        // Construct Libre.fm URL
+        url = `https://libre.fm/user/${user}`;
+      }
+
+      // Make the request through the CORS proxy
       const res = await fetch(`${corsProxyUrl}${encodeURIComponent(url)}`);
+      
       if (res.ok) {
         const html = await res.text();
         extractKeywords(html, user, keywords);
+
+        // Append the site link to the list
         list.innerHTML += `<li><a href="${url}" target="_blank">${site}</a></li>`;
+      } else {
+        console.warn(`Failed to fetch from ${site}: ${res.statusText}`);
       }
     } catch (err) {
       console.warn(`Failed to fetch from ${site}: ${err.message}`);
     }
   }
-  
+
+  // Score the collected keywords
   scoreSource("Music", keywords);
 }
