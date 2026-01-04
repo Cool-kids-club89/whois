@@ -8,7 +8,7 @@ export function similarityScore(a, b) {
 }
 
 export function clusterUsers() {
-  const users = Object.entries(window.userFingerprints);
+  const users = Object.entries(window.userFingerprints || {});  // Ensure it's not undefined
   window.userClusters = {};
   users.forEach(([u1, f1]) => {
     window.userClusters[u1] = [];
