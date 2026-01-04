@@ -1,4 +1,6 @@
-async function fetchOrg(orgName) {
+// org.js
+export async function fetchOrg(orgName) {
+  const result = document.getElementById('result');
   result.innerHTML += `<p>Loading organization data...</p>`;
 
   try {
