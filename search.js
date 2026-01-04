@@ -1,9 +1,9 @@
 import { showUserProfile } from './modules/user.js';
 import { extractKeywords, scoreSource, displayKeywordConfidence, displaySourceConfidence, applyDecay } from './modules/display.js';
 import { detectAliases } from './modules/aliases.js';
-import { fetchOrg } from './modules/org.js';  // Make sure this path is correct
+import { fetchOrg } from './modules/org.js';  // Import fetchOrg from org.js
 
-const input = document.getElementById("inputSearch");
+const input = document.getElementById("inputSearch");  // Make sure inputSearch is used (matches HTML)
 const btn = document.getElementById("searchBtn");
 const result = document.getElementById("result");
 
@@ -42,9 +42,9 @@ btn.onclick = async () => {
   // -------------------------
   // Fetch GitHub organizations pages (same repo)
   // -------------------------
-  if (profile.github?.orgs?.length) {
-    for (const org of profile.github.orgs) {
-      await fetchOrg(org); // Calling the function from org.js
+  if (profile.github?.organizations?.length) {
+    for (const org of profile.github.organizations) {
+      await fetchOrg(org); // Ensure the async fetchOrg function is awaited
     }
   }
 
