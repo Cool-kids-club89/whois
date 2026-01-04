@@ -12,6 +12,8 @@ window.userFingerprints = {};
 window.sourceConfidence = {};
 window.aliasCandidates = new Set();
 
+const proxyUrl = 'https://corsproxy.io/?url=';  // CORS proxy service
+
 btn.onclick = async () => {
   const user = input.value.trim();
   if (!user) return;
@@ -44,7 +46,7 @@ btn.onclick = async () => {
   // -------------------------
   if (profile.github?.organizations?.length) {
     for (const org of profile.github.organizations) {
-      await fetchOrg(org); // Ensure the async fetchOrg function is awaited
+      await fetchOrgWithProxy(org); // Use proxy to fetch organization data
     }
   }
 
@@ -63,6 +65,49 @@ btn.onclick = async () => {
     result.innerHTML += `<section><h3>Aliases</h3><ul>${[...window.aliasCandidates].map(a => `<li>${a}</li>`).join("")}</ul></section>`;
   }
 };
+
+async function fetchOrgWithProxy(orgName) {
+  const orgUrl = `https://api.github.com/orgs/${orgName}`;
+  const proxyUrlWithTarget = proxyUrl + encodeURIComponent(orgUrl);
+
+  try {
+    const res = await fetch(proxyUrlWithTarget);
+    if (!res.ok) throw new Error("Organization not found");
+    const orgData = await res.json();
+
+    result.innerHTML += `<section>
+      <h3>Organization Overview</h3>
+      <p><strong>Name:</strong> ${orgData.login}</p>
+      <p><strong>Description:</strong> ${orgData.description || "No description available"}</p>
+      <p><strong>Website:</strong> <a href="${orgData.blog}" target="_blank">${orgData.blog || "No website available"}</a></p>
+    </section>`;
+
+    // Fetch members
+    const membersRes = await fetch(proxyUrl + encodeURIComponent(orgData.members_url.replace('{/member}', '')));
+    let members = [];
+    if (membersRes.ok) members = await membersRes.json();
+    if (members.length) {
+      result.innerHTML += `<section>
+        <h3>Members</h3>
+        <ul>${members.map(m => `<li>${m.login}</li>`).join("")}</ul>
+      </section>`;
+    }
+
+    // Fetch public repositories
+    const reposRes = await fetch(proxyUrl + encodeURIComponent(orgData.repos_url));
+    let repos = [];
+    if (reposRes.ok) repos = await reposRes.json();
+    if (repos.length) {
+      result.innerHTML += `<section>
+        <h3>Repositories</h3>
+        <ul>${repos.map(r => `<li><a href="${r.html_url}" target="_blank">${r.name}</a> - ${r.language || "N/A"}</li>`).join("")}</ul>
+      </section>`;
+    }
+  } catch (err) {
+    result.innerHTML += `<p>Error fetching organization data: ${err.message}</p>`;
+    console.error(err);
+  }
+}
 
 function resetState() {
   window.userKeywordCache = {};
