@@ -22,14 +22,27 @@
     const btn = document.getElementById("searchBtn");
     const result = document.getElementById("result");
 
+    // Check URL parameters for auto lookup
+    const urlParams = new URLSearchParams(window.location.search);
+    const userParam = urlParams.get('user');
+    const user2Param = urlParams.get('user2');
+
+    // If user parameters exist, skip input and search automatically
+    if (userParam) {
+      fetchProfileData(userParam, user2Param);
+    }
+
     btn.onclick = async () => {
       const user = input.value.trim();
       if (!user) return;
 
-      result.innerHTML = `<h2>WHOIS Report: ${user}</h2><p>Gathering data...</p>`;
+      fetchProfileData(user);
+    };
 
-      // Try fetching live OSINT data
-      const profile = await fetchOSINTProfile(user);
+    async function fetchProfileData(user, user2) {
+      result.innerHTML = `<h2>OSINT Lookup: ${user}</h2><p>Gathering data...</p>`;
+
+      const profile = await fetchOSINTProfile(user, user2);
 
       if (!profile) {
         result.innerHTML += `<p>No data found for ${user}.</p>`;
@@ -37,19 +50,22 @@
       }
 
       displayProfile(user, profile);
-    };
+    }
 
     function displayProfile(user, profile) {
-      result.innerHTML = `<h2>WHOIS Report: ${user}</h2>`;
+      result.innerHTML = `<h2>OSINT Report for: ${user}</h2>`;
 
+      // Profile Overview Section
       result.innerHTML += `
         <section>
           <h3>Profile Overview</h3>
           <p><strong>Description:</strong> ${profile.description || "No description available."}</p>
           <p><strong>Known Aliases:</strong> ${(profile.aliases || []).join(", ") || "None"}</p>
+          <p><strong>Privacy & Security Rating:</strong> ${profile.opsecRating}</p>
         </section>
       `;
 
+      // Links Section
       if (profile.links?.length) {
         result.innerHTML += `
           <section>
@@ -61,17 +77,7 @@
         `;
       }
 
-      if (profile.music?.length) {
-        result.innerHTML += `
-          <section>
-            <h3>Music Profiles</h3>
-            <ul>
-              ${profile.music.map(m => `<li><a href="${m.url}" target="_blank">${m.platform} — ${m.username}</a></li>`).join("")}
-            </ul>
-          </section>
-        `;
-      }
-
+      // GitHub Section
       if (profile.github) {
         result.innerHTML += `
           <section>
@@ -83,67 +89,85 @@
         `;
       }
 
-      if (profile.roblox) {
+      // Social Media Section
+      if (profile.social) {
         result.innerHTML += `
           <section>
-            <h3>Roblox</h3>
-            <p><strong>ID:</strong> ${profile.roblox.id}</p>
-            <p><strong>Username:</strong> ${profile.roblox.username}</p>
-            <p><strong>Rank:</strong> ${profile.roblox.rank || "Unknown"}</p>
+            <h3>Social Media</h3>
+            <ul>
+              ${profile.social.map(s => `<li><a href="${s.url}" target="_blank">${s.platform} — ${s.username}</a></li>`).join("")}
+            </ul>
           </section>
         `;
       }
 
-      // Any other custom scraping results or sources added can go here
+      // Search Results Section (if any)
+      if (profile.searchResults) {
+        result.innerHTML += `
+          <section>
+            <h3>Search Results</h3>
+            <p>${profile.searchResults}</p>
+          </section>
+        `;
+      }
     }
 
-    async function fetchOSINTProfile(username) {
+    async function fetchOSINTProfile(username, user2) {
       let profile = {};
-
-      // Step 1: Check local profiles (Fallback data)
-      const localProfiles = {
-        "4zx16": { description: "Underground Developer & Gray-Hat Technologist", aliases: ["4zx16"], links: [{name: "GitHub", url: "https://github.com/4zx16"}] },
-        "7zh14": { description: "Multimedia Dev & Security Enthusiast", aliases: ["7zh14"], links: [{name: "GitHub", url: "https://github.com/7zh14"}] }
-      };
-
-      profile = localProfiles[username] || {};
+      profile.opsecRating = "Unknown"; // Default OPSEC rating
 
       try {
-        // Step 2: Fetch public data from GitHub
+        // Fetch GitHub Profile
         const githubRes = await fetch(`https://api.github.com/users/${username}`);
         if (githubRes.ok) {
           const gh = await githubRes.json();
           profile.github = { username: gh.login, bio: gh.bio, public_repos: gh.public_repos };
+          evaluateOPSEC(profile, "github");
         }
 
-        // Step 3: Fetch public data from Roblox
-        const robloxRes = await fetch(`https://api.roblox.com/users/get-by-username?username=${username}`);
-        if (robloxRes.ok) {
-          const rb = await robloxRes.json();
-          if (!rb.errors) {
-            profile.roblox = { id: rb.Id, username: rb.Username };
-          }
-        }
-
-        // Step 4: Web scrape or fetch social media data (Instagram, Twitter, Reddit)
+        // Fetch Social Media Profiles (mocked for now)
         const socialMediaRes = await fetch(`https://api.socialsearch.com/?username=${username}`);
         if (socialMediaRes.ok) {
           const social = await socialMediaRes.json();
-          profile.social = social;  // Assuming the response gives social media profiles
+          profile.social = social;  // Mocked response, assume it returns social media profiles
+          evaluateOPSEC(profile, "social");
         }
 
-        // Step 5: Optional: Search engines to gather info (Google, DuckDuckGo, etc.)
+        // Search engine results for mentions of the user
         const searchRes = await fetch(`https://www.duckduckgo.com/?q=${username}`);
         if (searchRes.ok) {
-          const searchData = await searchRes.text(); // Scrape or parse the result
+          const searchData = await searchRes.text();
           profile.searchResults = searchData;  // Placeholder for parsed results
         }
+
+        // Calculate OPSEC Rating based on gathered info
+        profile.opsecRating = calculateOPSECRating(profile);
 
       } catch (err) {
         console.error("OSINT fetch error:", err);
       }
 
       return Object.keys(profile).length ? profile : null;
+    }
+
+    function evaluateOPSEC(profile, platform) {
+      // Evaluate OPSEC based on the amount of data found on a platform
+      if (platform === "github" && profile.github.public_repos > 5) {
+        profile.opsecRating = "Bad OPSEC";
+      } else if (platform === "social" && profile.social.length > 3) {
+        profile.opsecRating = "Bad OPSEC";
+      }
+    }
+
+    function calculateOPSECRating(profile) {
+      // Rating based on the amount of information collected
+      const infoCount = Object.keys(profile).length;
+      if (infoCount > 5) {
+        return "Bad OPSEC";  // Too much information exposed
+      } else if (infoCount > 2) {
+        return "Medium OPSEC";
+      }
+      return "Good OPSEC";  // Minimal information exposed
     }
   </script>
 </body>
