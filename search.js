@@ -57,10 +57,41 @@ async function loadModules(user) {
       if (typeof module.showUserProfile === 'function') {
         await module.showUserProfile(user, result);  // Call showUserProfile if it exists
       }
+
       // Add any other functions you want to invoke based on the module's structure
       if (typeof module.loadGitHub === 'function') {
         await module.loadGitHub(user, window.userKeywordCache[user]); // Call loadGitHub if available
       }
+      
+      // Handle other possible function invocations based on available methods
+      if (typeof module.detectPrimaryBioSite === 'function') {
+        await module.detectPrimaryBioSite(user, window.userKeywordCache[user]); // Handle the primary bio site detection
+      }
+
+      if (typeof module.buildFingerprint === 'function') {
+        await module.buildFingerprint(user, window.userKeywordCache[user]); // Build user fingerprint if available
+      }
+
+      if (typeof module.displayFingerprint === 'function') {
+        await module.displayFingerprint();  // Display fingerprint data if available
+      }
+
+      if (typeof module.displayClusters === 'function') {
+        await module.displayClusters();  // Display clusters if available
+      }
+
+      if (typeof module.matchFingerprints === 'function') {
+        await module.matchFingerprints();  // Match fingerprints if available
+      }
+
+      if (typeof module.displayGraph === 'function') {
+        await module.displayGraph();  // Display graph if available
+      }
+
+      if (typeof module.inferPersona === 'function') {
+        await module.inferPersona(window.userKeywordCache[user]);  // Infer persona if available
+      }
+
     } catch (error) {
       console.warn(`Failed to load module ${fileName}:`, error);
     }
