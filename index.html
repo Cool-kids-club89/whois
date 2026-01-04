@@ -61,6 +61,8 @@
           <h3>Profile Overview</h3>
           <p><strong>Description:</strong> ${profile.description || "No description available."}</p>
           <p><strong>Known Aliases:</strong> ${(profile.aliases || []).join(", ") || "None"}</p>
+          <p><strong>Pronouns:</strong> ${profile.pronouns || "Not available"}</p>
+          <p><strong>Email:</strong> ${profile.email || "Not available"}</p>
           <p><strong>Privacy & Security Rating:</strong> ${profile.opsecRating}</p>
         </section>
       `;
@@ -84,6 +86,7 @@
             <h3>GitHub</h3>
             <p><strong>Username:</strong> ${profile.github.username}</p>
             <p><strong>Bio:</strong> ${profile.github.bio || "No bio"}</p>
+            <p><strong>Email:</strong> ${profile.github.email || "Not available"}</p>
             <p><strong>Public Repos:</strong> ${profile.github.public_repos || 0}</p>
           </section>
         `;
@@ -121,7 +124,13 @@
         const githubRes = await fetch(`https://api.github.com/users/${username}`);
         if (githubRes.ok) {
           const gh = await githubRes.json();
-          profile.github = { username: gh.login, bio: gh.bio, public_repos: gh.public_repos };
+          profile.github = {
+            username: gh.login,
+            bio: gh.bio,
+            email: gh.email || "Not available", // Check if email is public
+            public_repos: gh.public_repos
+          };
+          profile.pronouns = extractPronouns(gh.bio); // Try to extract pronouns from bio
           evaluateOPSEC(profile, "github");
         }
 
@@ -148,6 +157,12 @@
       }
 
       return Object.keys(profile).length ? profile : null;
+    }
+
+    function extractPronouns(bio) {
+      const pronounsRegex = /\b(he|she|they|ze|xe|it|we|you|us)\b/i;
+      const match = bio?.match(pronounsRegex);
+      return match ? match[0] : null;
     }
 
     function evaluateOPSEC(profile, platform) {
