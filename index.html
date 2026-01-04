@@ -133,28 +133,29 @@
           }
         };
 
+        // Check for local profile
         profile = localProfiles[username] || {};  // Merge local data if available
 
-        if (Object.keys(profile).length === 0) {  // If no local profile, proceed with OSINT fetch
-          // Fetch GitHub Profile
+        // If no local profile, build from OSINT data
+        if (Object.keys(profile).length === 0) {
           const githubRes = await fetch(`https://api.github.com/users/${username}`);
           if (githubRes.ok) {
             const gh = await githubRes.json();
             profile.github = {
               username: gh.login,
               bio: gh.bio,
-              email: gh.email || "Not available", // Check if email is public
+              email: gh.email || "Not available", 
               public_repos: gh.public_repos
             };
-            profile.pronouns = extractPronouns(gh.bio); // Try to extract pronouns from bio
+            profile.pronouns = extractPronouns(gh.bio);
             evaluateOPSEC(profile, "github");
           }
 
-          // Fetch Social Media Profiles (mocked for now)
+          // Fetch Social Media Profiles
           const socialMediaRes = await fetch(`https://api.socialsearch.com/?username=${username}`);
           if (socialMediaRes.ok) {
             const social = await socialMediaRes.json();
-            profile.social = social;  // Mocked response, assume it returns social media profiles
+            profile.social = social;
             evaluateOPSEC(profile, "social");
           }
 
@@ -162,7 +163,7 @@
           const searchRes = await fetch(`https://www.duckduckgo.com/?q=${username}`);
           if (searchRes.ok) {
             const searchData = await searchRes.text();
-            profile.searchResults = searchData;  // Placeholder for parsed results
+            profile.searchResults = searchData;
             evaluateSensitiveInfo(profile);
           }
         }
@@ -204,11 +205,10 @@
     }
 
     function evaluateSensitiveInfo(profile) {
-      // Check if sensitive info is exposed, e.g., phone number, email, etc.
       const sensitiveInfoRegex = /\b(\d{3}-\d{2}-\d{4}|\d{10}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4})\b/i;
       const match = profile.searchResults?.match(sensitiveInfoRegex);
       if (match) {
-        profile.opsecRating = "Bad OPSEC";  // Flag sensitive info
+        profile.opsecRating = "Bad OPSEC";
       }
     }
   </script>
