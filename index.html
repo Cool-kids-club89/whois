@@ -22,37 +22,25 @@
     const btn = document.getElementById("searchBtn");
     const result = document.getElementById("result");
 
-    // Check URL parameters for auto lookup
-    const urlParams = new URLSearchParams(window.location.search);
-    const userParam = urlParams.get('user');
-    const user2Param = urlParams.get('user2');
-
-    if (userParam) {
-      fetchProfileData(userParam, user2Param);
-    }
-
+    // Listen to the search button click
     btn.onclick = async () => {
       const user = input.value.trim();
       if (!user) return;
 
-      fetchProfileData(user);
-    };
-
-    async function fetchProfileData(user, user2) {
       result.innerHTML = `<h2>OSINT Lookup: ${user}</h2><p>Gathering data...</p>`;
-
-      const profile = await fetchOSINTProfile(user, user2);
-
+      const profile = await fetchOSINTProfile(user);
+      
       if (!profile) {
         result.innerHTML += `<p>No data found for ${user}.</p>`;
         return;
       }
 
       displayProfile(user, profile);
-    }
+    };
 
+    // Display Profile Data
     function displayProfile(user, profile) {
-      result.innerHTML = `<h2>OSINT Report for: ${user}</h2>`;
+      result.innerHTML = `<h2>Profile for: ${user}</h2>`;
 
       // Profile Overview Section
       result.innerHTML += `
@@ -114,9 +102,9 @@
       }
     }
 
-    async function fetchOSINTProfile(username, user2) {
+    // Fetch Profile Data from OSINT Sources
+    async function fetchOSINTProfile(username) {
       let profile = {};
-      profile.opsecRating = "Unknown"; // Default OPSEC rating
 
       try {
         // Step 1: Check Local Profiles (Fallback Data)
@@ -133,42 +121,40 @@
           }
         };
 
-        // Check for local profile
-        profile = localProfiles[username] || {};  // Merge local data if available
+        // Merge local data if available
+        profile = localProfiles[username] || {};  
 
-        // If no local profile, build from OSINT data
-        if (Object.keys(profile).length === 0) {
-          const githubRes = await fetch(`https://api.github.com/users/${username}`);
-          if (githubRes.ok) {
-            const gh = await githubRes.json();
-            profile.github = {
-              username: gh.login,
-              bio: gh.bio,
-              email: gh.email || "Not available", 
-              public_repos: gh.public_repos
-            };
-            profile.pronouns = extractPronouns(gh.bio);
-            evaluateOPSEC(profile, "github");
-          }
-
-          // Fetch Social Media Profiles
-          const socialMediaRes = await fetch(`https://api.socialsearch.com/?username=${username}`);
-          if (socialMediaRes.ok) {
-            const social = await socialMediaRes.json();
-            profile.social = social;
-            evaluateOPSEC(profile, "social");
-          }
-
-          // Search engine results for mentions of the user
-          const searchRes = await fetch(`https://www.duckduckgo.com/?q=${username}`);
-          if (searchRes.ok) {
-            const searchData = await searchRes.text();
-            profile.searchResults = searchData;
-            evaluateSensitiveInfo(profile);
-          }
+        // Fetch GitHub Profile
+        const githubRes = await fetch(`https://api.github.com/users/${username}`);
+        if (githubRes.ok) {
+          const gh = await githubRes.json();
+          profile.github = {
+            username: gh.login,
+            bio: gh.bio,
+            email: gh.email || "Not available", 
+            public_repos: gh.public_repos
+          };
+          profile.pronouns = extractPronouns(gh.bio);
+          evaluateOPSEC(profile, "github");
         }
 
-        // Calculate OPSEC Rating based on gathered info
+        // Fetch Social Media Profiles
+        const socialMediaRes = await fetch(`https://api.socialsearch.com/?username=${username}`);
+        if (socialMediaRes.ok) {
+          const social = await socialMediaRes.json();
+          profile.social = social;
+          evaluateOPSEC(profile, "social");
+        }
+
+        // Search engine results for mentions of the user
+        const searchRes = await fetch(`https://www.duckduckgo.com/?q=${username}`);
+        if (searchRes.ok) {
+          const searchData = await searchRes.text();
+          profile.searchResults = searchData;
+          evaluateSensitiveInfo(profile);
+        }
+
+        // Return the full profile (merged local + OSINT data)
         profile.opsecRating = calculateOPSECRating(profile);
 
       } catch (err) {
