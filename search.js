@@ -3,7 +3,7 @@ import { extractKeywords, scoreSource, displayKeywordConfidence, displaySourceCo
 import { detectAliases } from './modules/aliases.js';
 import { fetchOrg } from './modules/org.js';  // Make sure this path is correct
 
-const input = document.getElementById("usernameInput");
+const input = document.getElementById("inputSearch");
 const btn = document.getElementById("searchBtn");
 const result = document.getElementById("result");
 
