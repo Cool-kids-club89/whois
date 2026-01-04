@@ -1,7 +1,7 @@
 import { showUserProfile } from './modules/user.js';
 import { extractKeywords, scoreSource, displayKeywordConfidence, displaySourceConfidence, applyDecay } from './modules/display.js';
 import { detectAliases } from './modules/aliases.js';
-import { fetchOrg } from './modules/org.js'; // Ensure org.js export is correct
+import { fetchOrg } from './modules/org.js';  // Make sure this path is correct
 
 const input = document.getElementById("usernameInput");
 const btn = document.getElementById("searchBtn");
