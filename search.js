@@ -60,9 +60,11 @@ async function loadModules(user) {
 
       // Add any other functions you want to invoke based on the module's structure
       if (typeof module.loadGitHub === 'function') {
-        await module.loadGitHub(user, window.userKeywordCache[user]); // Call loadGitHub if available
-      }
-      
+  await module.loadGitHub(user, window.userKeywordCache[user]);
+} else {
+  console.warn("loadGitHub not defined in module", fileName);
+}
+
       // Handle other possible function invocations based on available methods
       if (typeof module.detectPrimaryBioSite === 'function') {
         await module.detectPrimaryBioSite(user, window.userKeywordCache[user]); // Handle the primary bio site detection
@@ -111,7 +113,6 @@ async function fetchModuleFiles() {
     return [];  // Return an empty array if there's an error fetching the JSON
   }
 }
-
 // Fetch the local individual page for the user
 async function fetchLocalPage(username) {
   try {
