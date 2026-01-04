@@ -2,21 +2,21 @@ export async function showUserProfile(username, container) {
   container.innerHTML = `<h2>${username}</h2><p>Loading profile...</p>`;
   const profile = { aliases: [], links: [], music: [], github: {}, pronouns: null, image: null, banner: null, badges: [], email: null, organizations: [] };
 
-  // -----------------------------
-  // Fetch GitHub
-  // -----------------------------
+  const corsProxyUrl = 'https://corsproxy.io/?url=';
+  const htmlDrivenUrl = 'https://html-driven.com/proxy?url=';
+
   try {
-    const ghProfile = await fetch(`https://api.github.com/users/${username}`).then(r => r.json());
-    if (ghProfile.login) {
+    const ghProfileRes = await fetch(`${corsProxyUrl}${encodeURIComponent(`https://api.github.com/users/${username}`)}`).then(r => r.json());
+    if (ghProfileRes.login) {
       profile.github = {
-        username: ghProfile.login,
-        bio: ghProfile.bio || "No bio provided",
-        public_repos: ghProfile.public_repos || 0,
-        followers: ghProfile.followers || 0,
-        avatar_url: ghProfile.avatar_url,
-        banner_url: ghProfile.banner_url,
-        email: ghProfile.email || "No public email available",
-        organizations_url: ghProfile.organizations_url
+        username: ghProfileRes.login,
+        bio: ghProfileRes.bio || "No bio provided",
+        public_repos: ghProfileRes.public_repos || 0,
+        followers: ghProfileRes.followers || 0,
+        avatar_url: ghProfileRes.avatar_url,
+        banner_url: ghProfileRes.banner_url,
+        email: ghProfileRes.email || "No public email available",
+        organizations_url: ghProfileRes.organizations_url
       };
       profile.links.push({ name: "GitHub", url: `https://github.com/${username}` });
 
@@ -24,22 +24,22 @@ export async function showUserProfile(username, container) {
       // Fetch and add user's organizations
       // -----------------------------
       try {
-        const orgs = await fetch(ghProfile.organizations_url).then(res => res.json());
+        const orgs = await fetch(`${corsProxyUrl}${encodeURIComponent(ghProfileRes.organizations_url)}`).then(res => res.json());
         if (orgs.length) {
           profile.organizations = orgs.map(org => org.login);
         }
       } catch {}
 
       // Attempt to detect pronouns from GitHub bio
-      const pronounMatch = ghProfile.bio?.match(/\b(he\/him|she\/her|they\/them|any pronouns)\b/i);
+      const pronounMatch = ghProfileRes.bio?.match(/\b(he\/him|she\/her|they\/them|any pronouns)\b/i);
       if (pronounMatch) profile.pronouns = pronounMatch[0];
 
       // -----------------------------
       // Fetch README.md content if available
       // -----------------------------
-      const readmeUrl = `https://raw.githubusercontent.com/${username}/${username}/main/README.md`; // Default for user's repo
+      const readmeUrl = `https://raw.githubusercontent.com/${username}/${username}/main/README.md`;
       try {
-        const readmeRes = await fetch(readmeUrl);
+        const readmeRes = await fetch(`${corsProxyUrl}${encodeURIComponent(readmeUrl)}`);
         if (readmeRes.ok) {
           const readmeContent = await readmeRes.text();
           profile.readme = readmeContent;
@@ -47,7 +47,7 @@ export async function showUserProfile(username, container) {
       } catch {}
 
       // GitHub Badges (contribution status, etc.)
-      const badgesRes = await fetch(`https://github-readme-stats.vercel.app/api?username=${username}&show_icons=true&hide_title=true&hide_border=true&count_private=true&include_all_commits=true&hide=prs`);
+      const badgesRes = await fetch(`${corsProxyUrl}${encodeURIComponent(`https://github-readme-stats.vercel.app/api?username=${username}&show_icons=true&hide_title=true&hide_border=true&count_private=true&include_all_commits=true&hide=prs`)}`);
       profile.badges.push(badgesRes.url); // Adds a dynamic badge URL
     }
   } catch {}
@@ -59,6 +59,7 @@ export async function showUserProfile(username, container) {
     `https://about${username}.carrd.co/`,
     `https://${username}.carrd.co/`
   ];
+
   for (const url of carrdUrls) {
     try {
       const res = await fetch(url);
@@ -138,12 +139,12 @@ export async function showUserProfile(username, container) {
 
   // Links Section
   if (profile.links.length) {
-    container.innerHTML += `<h3>Links</h3><ul>${profile.links.map(l=>`<li><a href="${l.url}" target="_blank">${l.name}</a></li>`).join("")}</ul>`;
+    container.innerHTML += `<h3>Links</h3><ul>${profile.links.map(l => `<li><a href="${l.url}" target="_blank">${l.name}</a></li>`).join("")}</ul>`;
   }
 
   // Music Profiles
   if (profile.music.length) {
-    container.innerHTML += `<h3>Music Profiles</h3><ul>${profile.music.map(m=>`<li>${m.platform}: <a href="${m.url}" target="_blank">${m.username}</a></li>`).join("")}</ul>`;
+    container.innerHTML += `<h3>Music Profiles</h3><ul>${profile.music.map(m => `<li>${m.platform}: <a href="${m.url}" target="_blank">${m.username}</a></li>`).join("")}</ul>`;
   }
 
   // Aliases
