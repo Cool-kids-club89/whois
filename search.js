@@ -1,6 +1,7 @@
 import { showUserProfile } from './modules/user.js';
 import { extractKeywords, scoreSource, displayKeywordConfidence, displaySourceConfidence, applyDecay } from './modules/display.js';
 import { detectAliases } from './modules/aliases.js';
+import { fetchOrg } from './modules/org.js'; // Ensure org.js export is correct
 
 const input = document.getElementById("usernameInput");
 const btn = document.getElementById("searchBtn");
@@ -43,17 +44,7 @@ btn.onclick = async () => {
   // -------------------------
   if (profile.github?.orgs?.length) {
     for (const org of profile.github.orgs) {
-      try {
-        const res = await fetch(`org/${org}.html`);
-        if (res.ok) {
-          const html = await res.text();
-          result.innerHTML += `<section><h3>Organization: ${org}</h3>${html}</section>`;
-          extractKeywords(html, org, window.userKeywordCache[org] = {});
-          scoreSource("Organization Page", window.userKeywordCache[org]);
-        }
-      } catch (e) {
-        console.warn(`Organization page fetch failed for ${org}:`, e);
-      }
+      await fetchOrg(org); // Calling the function from org.js
     }
   }
 
