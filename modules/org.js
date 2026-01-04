@@ -1,59 +1,71 @@
-// Fetch and display organization data, including owners, repos, etc.
-export async function fetchOrgData(orgName) {
-  let orgData = {};
+async function fetchOrg(orgName) {
+  result.innerHTML += `<p>Loading organization data...</p>`;
 
   try {
-    // Step 1: Get basic organization data (e.g., description, public repos)
+    // 1. Fetch organization info
     const orgRes = await fetch(`https://api.github.com/orgs/${orgName}`);
-    if (orgRes.ok) {
-      const orgInfo = await orgRes.json();
-      orgData.name = orgInfo.login;
-      orgData.description = orgInfo.description || "No description available";
-      orgData.website = orgInfo.blog || "No website available";
+    if (!orgRes.ok) throw new Error("Organization not found");
+    const orgData = await orgRes.json();
 
-      // Step 2: Fetch public repositories in the organization
-      const reposRes = await fetch(orgInfo.repos_url);
-      if (reposRes.ok) {
-        const repos = await reposRes.json();
-        orgData.repos = repos.map(repo => ({
-          name: repo.name,
-          url: repo.html_url,
-          description: repo.description || "No description available",
-          language: repo.language || "Not specified",
-        }));
-      }
+    result.innerHTML += `<section>
+      <h3>Organization Overview</h3>
+      <p><strong>Name:</strong> ${orgData.login}</p>
+      <p><strong>Description:</strong> ${orgData.description || "No description available"}</p>
+      <p><strong>Website:</strong> <a href="${orgData.blog}" target="_blank">${orgData.blog || "No website available"}</a></p>
+    </section>`;
 
-      // Step 3: Get members and owners (Admins and Owners)
-      const membersRes = await fetch(`https://api.github.com/orgs/${orgName}/members`);
-      if (membersRes.ok) {
-        const members = await membersRes.json();
-        orgData.members = members.map(member => member.login);
-      }
-
-      const ownersRes = await fetch(`https://api.github.com/orgs/${orgName}/memberships`);
-      if (ownersRes.ok) {
-        const owners = await ownersRes.json();
-        orgData.owners = owners.filter(owner => owner.role === 'admin').map(owner => owner.login);
-      }
-
-      // Step 4: Set OPSEC Rating based on public data
-      orgData.opsecRating = calculateOPSECRating(orgData);
+    // 2. Fetch members
+    const membersRes = await fetch(`https://api.github.com/orgs/${orgName}/members`);
+    let members = [];
+    if (membersRes.ok) members = await membersRes.json();
+    if (members.length) {
+      result.innerHTML += `<section>
+        <h3>Members</h3>
+        <ul>${members.map(m => `<li>${m.login}</li>`).join("")}</ul>
+      </section>`;
     }
-  } catch (err) {
-    console.error("Error fetching organization data:", err);
-  }
 
-  return orgData;
+    // 3. Fetch public repositories
+    const reposRes = await fetch(orgData.repos_url);
+    let repos = [];
+    if (reposRes.ok) repos = await reposRes.json();
+    if (repos.length) {
+      result.innerHTML += `<section>
+        <h3>Repositories</h3>
+        <ul>${repos.map(r => `<li><a href="${r.html_url}" target="_blank">${r.name}</a> - ${r.language || "N/A"}</li>`).join("")}</ul>
+      </section>`;
+    }
+
+    // 4. Fetch Organization Page README from `.github` repo
+    try {
+      const readmeRes = await fetch(`https://raw.githubusercontent.com/${orgName}/.github/main/README.md`);
+      if (readmeRes.ok) {
+        const readmeText = await readmeRes.text();
+        result.innerHTML += `<section>
+          <h3>Organization Page README.md (.github repo)</h3>
+          <pre>${escapeHtml(readmeText)}</pre>
+        </section>`;
+      } else {
+        result.innerHTML += `<p>No organization page README.md found in .github repository.</p>`;
+      }
+    } catch {
+      result.innerHTML += `<p>No organization page README.md found in .github repository.</p>`;
+    }
+
+    // 5. OPSEC rating
+    let opsec = "Good OPSEC";
+    if (repos.length > 10 || members.length > 20) opsec = "Bad OPSEC";
+    else if (repos.length > 5 || members.length > 5) opsec = "Medium OPSEC";
+    result.innerHTML += `<p><strong>Privacy & Security Rating:</strong> ${opsec}</p>`;
+
+  } catch (err) {
+    result.innerHTML += `<p>Error fetching organization data: ${err.message}</p>`;
+    console.error(err);
+  }
 }
 
-function calculateOPSECRating(orgData) {
-  const repoCount = orgData.repos ? orgData.repos.length : 0;
-  const memberCount = orgData.members ? orgData.members.length : 0;
-
-  if (repoCount > 10 || memberCount > 20) {
-    return "Bad OPSEC";  // Too many public repositories or members
-  } else if (repoCount > 5 || memberCount > 5) {
-    return "Medium OPSEC";
-  }
-  return "Good OPSEC";  // Few public repos and members
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
