@@ -1,14 +1,30 @@
-// org.js
 export async function fetchOrg(orgName) {
   const result = document.getElementById('result');
   result.innerHTML += `<p>Loading organization data...</p>`;
 
+  // Proxy URLs
+  const corsProxyUrl = 'https://corsproxy.io/?url=';
+  const htmlDrivenUrl = 'https://html-driven.com/proxy?url=';
+
+  // Function to fetch data with the proxy fallback
+  const fetchWithProxy = async (url) => {
+    const proxyUrl = corsProxyUrl + encodeURIComponent(url);
+    try {
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error('Failed to fetch data with primary proxy');
+      return res.json();
+    } catch {
+      // If the first proxy fails, fall back to HTMLDriven proxy
+      const fallbackProxyUrl = htmlDrivenUrl + encodeURIComponent(url);
+      const res = await fetch(fallbackProxyUrl);
+      if (!res.ok) throw new Error('Failed to fetch data with fallback proxy');
+      return res.json();
+    }
+  };
+
   try {
     // 1. Fetch organization info
-    const orgRes = await fetch(`https://api.github.com/orgs/${orgName}`);
-    if (!orgRes.ok) throw new Error("Organization not found");
-    const orgData = await orgRes.json();
-
+    const orgData = await fetchWithProxy(`https://api.github.com/orgs/${orgName}`);
     result.innerHTML += `<section>
       <h3>Organization Overview</h3>
       <p><strong>Name:</strong> ${orgData.login}</p>
@@ -17,49 +33,33 @@ export async function fetchOrg(orgName) {
     </section>`;
 
     // 2. Fetch members
-    const membersRes = await fetch(`https://api.github.com/orgs/${orgName}/members`);
-    let members = [];
-    if (membersRes.ok) members = await membersRes.json();
-    if (members.length) {
-      result.innerHTML += `<section>
-        <h3>Members</h3>
-        <ul>${members.map(m => `<li>${m.login}</li>`).join("")}</ul>
-      </section>`;
-    }
+    const membersData = await fetchWithProxy(`https://api.github.com/orgs/${orgName}/members`);
+    result.innerHTML += `<section>
+      <h3>Members</h3>
+      <ul>${membersData.map(m => `<li>${m.login}</li>`).join("")}</ul>
+    </section>`;
 
     // 3. Fetch public repositories
-    const reposRes = await fetch(orgData.repos_url);
-    let repos = [];
-    if (reposRes.ok) repos = await reposRes.json();
-    if (repos.length) {
-      result.innerHTML += `<section>
-        <h3>Repositories</h3>
-        <ul>${repos.map(r => `<li><a href="${r.html_url}" target="_blank">${r.name}</a> - ${r.language || "N/A"}</li>`).join("")}</ul>
-      </section>`;
-    }
+    const reposData = await fetchWithProxy(orgData.repos_url);
+    result.innerHTML += `<section>
+      <h3>Repositories</h3>
+      <ul>${reposData.map(r => `<li><a href="${r.html_url}" target="_blank">${r.name}</a> - ${r.language || "N/A"}</li>`).join("")}</ul>
+    </section>`;
 
-    // 4. Fetch Organization Page README from `.github` repo
+    // 4. Fetch Organization README
     try {
-      const readmeRes = await fetch(`https://raw.githubusercontent.com/${orgName}/.github/main/README.md`);
-      if (readmeRes.ok) {
-        const readmeText = await readmeRes.text();
-        result.innerHTML += `<section>
-          <h3>Organization Page README.md (.github repo)</h3>
-          <pre>${escapeHtml(readmeText)}</pre>
-        </section>`;
-      } else {
-        result.innerHTML += `<p>No organization page README.md found in .github repository.</p>`;
-      }
+      const readmeRes = await fetchWithProxy(`https://raw.githubusercontent.com/${orgName}/.github/main/README.md`);
+      result.innerHTML += `<section>
+        <h3>Organization README</h3>
+        <pre>${escapeHtml(await readmeRes.text())}</pre>
+      </section>`;
     } catch {
-      result.innerHTML += `<p>No organization page README.md found in .github repository.</p>`;
+      result.innerHTML += `<p>No organization README found.</p>`;
     }
 
-    // 5. OPSEC rating
-    let opsec = "Good OPSEC";
-    if (repos.length > 10 || members.length > 20) opsec = "Bad OPSEC";
-    else if (repos.length > 5 || members.length > 5) opsec = "Medium OPSEC";
+    // 5. OPSEC rating based on repositories and members
+    const opsec = reposData.length > 10 || membersData.length > 20 ? "Bad OPSEC" : reposData.length > 5 || membersData.length > 5 ? "Medium OPSEC" : "Good OPSEC";
     result.innerHTML += `<p><strong>Privacy & Security Rating:</strong> ${opsec}</p>`;
-
   } catch (err) {
     result.innerHTML += `<p>Error fetching organization data: ${err.message}</p>`;
     console.error(err);
