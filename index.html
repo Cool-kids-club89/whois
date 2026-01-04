@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WHOIS Repo</title>
+  <title>Full OSINT Lookup</title>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="search.js" defer></script>
 </head>
 <body>
   <div class="container">
-    <h1>WHOIS Lookup</h1>
+    <h1>Full OSINT Lookup</h1>
     <div class="search-box">
       <input type="text" id="usernameInput" placeholder="Enter username (e.g., 4zx16)">
       <button id="searchBtn">Search</button>
@@ -25,107 +25,125 @@
     btn.onclick = async () => {
       const user = input.value.trim();
       if (!user) return;
-      
-      result.innerHTML = `<h2>WHOIS Report: ${user}</h2>`;
 
-      // Reset the result area
-      result.innerHTML = `<h2>WHOIS Report: ${user}</h2><p>Loading...</p>`;
+      result.innerHTML = `<h2>WHOIS Report: ${user}</h2><p>Gathering data...</p>`;
 
-      // Fetch User Profile Data Dynamically
-      const profile = await fetchProfile(user);
+      // Try fetching live OSINT data
+      const profile = await fetchOSINTProfile(user);
 
       if (!profile) {
-        result.innerHTML += `<p>No profile data found for ${user}.</p>`;
+        result.innerHTML += `<p>No data found for ${user}.</p>`;
         return;
       }
 
-      // Display the profile data dynamically
+      displayProfile(user, profile);
+    };
+
+    function displayProfile(user, profile) {
       result.innerHTML = `<h2>WHOIS Report: ${user}</h2>`;
-      
-      // Add Profile Info
+
       result.innerHTML += `
         <section>
           <h3>Profile Overview</h3>
           <p><strong>Description:</strong> ${profile.description || "No description available."}</p>
-          <p><strong>Known Aliases:</strong> ${profile.aliases.join(", ")}</p>
+          <p><strong>Known Aliases:</strong> ${(profile.aliases || []).join(", ") || "None"}</p>
         </section>
       `;
 
-      // Add Links (GitHub, Carrd, etc.)
-      result.innerHTML += `
-        <section>
-          <h3>Links</h3>
-          <ul>
-            ${profile.links.map(link => `<li><a href="${link.url}" target="_blank">${link.name}</a></li>`).join('')}
-          </ul>
-        </section>
-      `;
-
-      // Add Music Profiles (Last.fm or Libre.fm)
-      if (profile.music) {
+      if (profile.links?.length) {
         result.innerHTML += `
           <section>
-            <h3>Music Profiles</h3>
+            <h3>Links</h3>
             <ul>
-              ${profile.music.map(music => `<li><a href="${music.url}" target="_blank">${music.platform} — ${music.username}</a></li>`).join('')}
+              ${profile.links.map(l => `<li><a href="${l.url}" target="_blank">${l.name}</a></li>`).join("")}
             </ul>
           </section>
         `;
       }
 
-      // Optionally Add GitHub and Other API Data
+      if (profile.music?.length) {
+        result.innerHTML += `
+          <section>
+            <h3>Music Profiles</h3>
+            <ul>
+              ${profile.music.map(m => `<li><a href="${m.url}" target="_blank">${m.platform} — ${m.username}</a></li>`).join("")}
+            </ul>
+          </section>
+        `;
+      }
+
       if (profile.github) {
         result.innerHTML += `
           <section>
             <h3>GitHub</h3>
             <p><strong>Username:</strong> ${profile.github.username}</p>
-            <p><strong>Bio:</strong> ${profile.github.bio}</p>
-            <p><strong>Public Repos:</strong> ${profile.github.public_repos}</p>
+            <p><strong>Bio:</strong> ${profile.github.bio || "No bio"}</p>
+            <p><strong>Public Repos:</strong> ${profile.github.public_repos || 0}</p>
           </section>
         `;
       }
-    };
 
-    async function fetchProfile(username) {
-      const profiles = {
-        "4zx16": {
-          description: "Underground Developer & Gray-Hat Technologist • Visibility: Low-Medium",
-          aliases: ["4zx16", "not4zx16", "DarkShadow5352", "Dark Knight", "Bluishparrot70"],
-          links: [
-            { name: "GitHub", url: "https://github.com/4zx16" },
-            { name: "Carrd", url: "https://about4zx16.carrd.co/" },
-            { name: "Krynet", url: "https://4zx16.github.io/Krynet/" }
-          ],
-          music: [
-            { platform: "Last.fm", username: "l4zx16", url: "https://last.fm/user/l4zx16" }
-          ],
-          github: {
-            username: "4zx16",
-            bio: "Cybersecurity expert, game developer, and hacker.",
-            public_repos: 10
-          }
-        },
-        "7zh14": {
-          description: "Developer • OSINT-Referenced Identity • Multimedia & Systems",
-          aliases: ["7zh14", "sevenzh14"],
-          links: [
-            { name: "GitHub", url: "https://github.com/7zh14" },
-            { name: "Carrd", url: "https://7zh14.carrd.co" },
-            { name: "SoundCloud", url: "https://soundcloud.com/7zh14s" },
-            { name: "Twitch", url: "https://www.twitch.tv/7zh14" }
-          ],
-          music: [
-            { platform: "Last.fm", username: "sevenzh14", url: "https://last.fm/user/sevenzh14" }
-          ],
-          github: {
-            username: "7zh14",
-            bio: "Multimedia Developer with a focus on security.",
-            public_repos: 15
-          }
-        }
+      if (profile.roblox) {
+        result.innerHTML += `
+          <section>
+            <h3>Roblox</h3>
+            <p><strong>ID:</strong> ${profile.roblox.id}</p>
+            <p><strong>Username:</strong> ${profile.roblox.username}</p>
+            <p><strong>Rank:</strong> ${profile.roblox.rank || "Unknown"}</p>
+          </section>
+        `;
+      }
+
+      // Any other custom scraping results or sources added can go here
+    }
+
+    async function fetchOSINTProfile(username) {
+      let profile = {};
+
+      // Step 1: Check local profiles (Fallback data)
+      const localProfiles = {
+        "4zx16": { description: "Underground Developer & Gray-Hat Technologist", aliases: ["4zx16"], links: [{name: "GitHub", url: "https://github.com/4zx16"}] },
+        "7zh14": { description: "Multimedia Dev & Security Enthusiast", aliases: ["7zh14"], links: [{name: "GitHub", url: "https://github.com/7zh14"}] }
       };
 
-      return profiles[username] || null; // Return profile data for the username
+      profile = localProfiles[username] || {};
+
+      try {
+        // Step 2: Fetch public data from GitHub
+        const githubRes = await fetch(`https://api.github.com/users/${username}`);
+        if (githubRes.ok) {
+          const gh = await githubRes.json();
+          profile.github = { username: gh.login, bio: gh.bio, public_repos: gh.public_repos };
+        }
+
+        // Step 3: Fetch public data from Roblox
+        const robloxRes = await fetch(`https://api.roblox.com/users/get-by-username?username=${username}`);
+        if (robloxRes.ok) {
+          const rb = await robloxRes.json();
+          if (!rb.errors) {
+            profile.roblox = { id: rb.Id, username: rb.Username };
+          }
+        }
+
+        // Step 4: Web scrape or fetch social media data (Instagram, Twitter, Reddit)
+        const socialMediaRes = await fetch(`https://api.socialsearch.com/?username=${username}`);
+        if (socialMediaRes.ok) {
+          const social = await socialMediaRes.json();
+          profile.social = social;  // Assuming the response gives social media profiles
+        }
+
+        // Step 5: Optional: Search engines to gather info (Google, DuckDuckGo, etc.)
+        const searchRes = await fetch(`https://www.duckduckgo.com/?q=${username}`);
+        if (searchRes.ok) {
+          const searchData = await searchRes.text(); // Scrape or parse the result
+          profile.searchResults = searchData;  // Placeholder for parsed results
+        }
+
+      } catch (err) {
+        console.error("OSINT fetch error:", err);
+      }
+
+      return Object.keys(profile).length ? profile : null;
     }
   </script>
 </body>
