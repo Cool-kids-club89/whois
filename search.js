@@ -15,6 +15,16 @@ window.aliasCandidates = new Set();
 const corsProxyUrl = 'https://corsproxy.io/?url=';  // CORS proxy service
 const htmlDrivenUrl = 'https://html-driven.com/proxy?url=';  // HTMLDriven proxy service
 
+// Check if there's a search query in the URL
+const urlParams = new URLSearchParams(window.location.search);
+const searchQuery = urlParams.get('search');
+
+// Pre-fill the input with the search query if available
+if (searchQuery) {
+  input.value = searchQuery;
+  btn.click();  // Automatically trigger the search
+}
+
 btn.onclick = async () => {
   const user = input.value.trim();
   if (!user) return;
@@ -65,7 +75,31 @@ btn.onclick = async () => {
   if (window.aliasCandidates.size) {
     result.innerHTML += `<section><h3>Aliases</h3><ul>${[...window.aliasCandidates].map(a => `<li>${a}</li>`).join("")}</ul></section>`;
   }
+  
+  // -------------------------
+  // Dynamically import and execute modules (except templates)
+  // -------------------------
+  await loadModules();
 };
+
+async function loadModules() {
+  const moduleContext = require.context('./modules/', false, /\.js$/);  // Get all .js files in modules directory
+  
+  for (const fileName of moduleContext.keys()) {
+    // Skip files that contain 'template' in the name
+    if (fileName.includes('template')) continue;
+    
+    try {
+      const module = await import(`${fileName}`);
+      // If the module has an `init` function, we call it (optional)
+      if (module.init) {
+        await module.init();
+      }
+    } catch (error) {
+      console.warn(`Failed to load module ${fileName}:`, error);
+    }
+  }
+}
 
 async function fetchOrgWithDualProxy(orgName) {
   const orgUrl = `https://api.github.com/orgs/${orgName}`;
@@ -86,7 +120,7 @@ async function fetchOrgWithDualProxy(orgName) {
     </section>`;
 
     // Fetch members
-    const membersRes = await fetch(proxyUrlWithCorsProxy + encodeURIComponent(orgData.members_url.replace('{/member}', '')));
+    const membersRes = await fetch(proxyUrlWithCorsProxy + encodeURIComponent(orgData.members_url.replace('{/member}', ''))); 
     let members = [];
     if (membersRes.ok) members = await membersRes.json();
     if (members.length) {
