@@ -1,141 +1,155 @@
-const input = document.getElementById("inputSearch");  // Make sure inputSearch is used (matches HTML)
-const btn = document.getElementById("searchBtn");
+/* =========================
+   DOM REFERENCES
+========================= */
+const input  = document.getElementById("inputSearch");
+const btn    = document.getElementById("searchBtn");
 const result = document.getElementById("result");
 
-window.userKeywordCache = {};
-window.userFingerprints = {};
-window.sourceConfidence = {};
-window.aliasCandidates = new Set();
+/* =========================
+   GLOBAL STATE (INTENTIONAL)
+========================= */
+window.userKeywordCache  = {};
+window.userFingerprints  = {};
+window.sourceConfidence  = {};
+window.aliasCandidates   = new Set();
 
-const corsProxyUrl = 'https://corsproxy.io/?url=';  // CORS proxy service
-const htmlDrivenUrl = 'https://html-driven.com/proxy?url=';  // HTMLDriven proxy service
+/* =========================
+   INTERNAL CACHES
+========================= */
+const moduleCache     = new Map();   // imported modules
+let moduleFileCache   = null;        // moduleList.json
 
-// Check if there's a search query in the URL
-const urlParams = new URLSearchParams(window.location.search);
-const searchQuery = urlParams.get('search');
+/* =========================
+   URL SEARCH AUTOLOAD
+========================= */
+const params = new URLSearchParams(window.location.search);
+const autoSearch = params.get("search");
 
-// Pre-fill the input with the search query if available
-if (searchQuery) {
-  input.value = searchQuery;
-  btn.click();  // Automatically trigger the search
+if (autoSearch) {
+  input.value = autoSearch;
+  queueMicrotask(() => btn.click());
 }
 
+/* =========================
+   MAIN SEARCH HANDLER
+========================= */
 btn.onclick = async () => {
   const user = input.value.trim();
   if (!user) return;
 
   resetState();
-  result.innerHTML = `<h2>Search Results for: ${user}</h2>`;
+  renderBase(user);
 
-  // Dynamically load and run all .js modules based on the module list from JSON
-  await loadModules(user);
-
-  // Display the result for GitHub user (or whatever other modules might add data)
-  await loadGitHub(user, window.userKeywordCache[user]);
-
-  // Fetch and display the local individual page if it exists
-  await fetchLocalPage(user);
-
-  // Show user profile details
-  await showUserProfile(user, result);
+  try {
+    const modules = await loadModulesOnce();
+    await runModules(modules, user);
+    await fetchLocalProfile(user);
+  } catch (err) {
+    console.error("Search pipeline failed:", err);
+  }
 };
 
-// Dynamically import and run all .js modules (excluding templates)
-async function loadModules(user) {
-  // Fetch the list of module files from moduleList.json
-  const moduleFiles = await fetchModuleFiles();
+/* =========================
+   RENDER BASE STRUCTURE
+========================= */
+function renderBase(user) {
+  result.innerHTML = `
+    <h2>Search Results for: ${user}</h2>
+    <div id="localProfile"></div>
+    <div id="dynamicProfile"></div>
+  `;
+}
 
-  for (const fileName of moduleFiles) {
-    // Skip files that contain 'template' in the name
-    if (fileName.includes('template')) continue;
+/* =========================
+   MODULE LOADING (ONCE)
+========================= */
+async function loadModulesOnce() {
+  if (moduleFileCache) return moduleFileCache;
 
+  const res = await fetch("./modules/moduleList.json");
+  if (!res.ok) throw new Error("moduleList.json missing");
+
+  const { files } = await res.json();
+  moduleFileCache = files.filter(f => !f.includes("template"));
+  return moduleFileCache;
+}
+
+/* =========================
+   MODULE EXECUTION PIPELINE
+========================= */
+async function runModules(files, user) {
+  const dynamicContainer = document.getElementById("dynamicProfile");
+
+  for (const file of files) {
     try {
-      // Dynamically import the module (based on the file name)
-      const module = await import(`./modules/${fileName}`);
-      
-      // Call relevant functions if they exist in the module
-      if (typeof module.showUserProfile === 'function') {
-        await module.showUserProfile(user, result);  // Call showUserProfile if it exists
-      }
+      const mod = await importModule(file);
 
-      // Add any other functions you want to invoke based on the module's structure
-      if (typeof module.loadGitHub === 'function') {
-  await module.loadGitHub(user, window.userKeywordCache[user]);
-} else {
-  console.warn("loadGitHub not defined in module", fileName);
-}
+      // ordered execution (important)
+      await safeCall(mod.loadGitHub, user, window.userKeywordCache[user]);
+      await safeCall(mod.detectPrimaryBioSite, user, window.userKeywordCache[user]);
+      await safeCall(mod.buildFingerprint, user, window.userKeywordCache[user]);
+      await safeCall(mod.matchFingerprints);
+      await safeCall(mod.inferPersona, window.userKeywordCache[user]);
 
-      // Handle other possible function invocations based on available methods
-      if (typeof module.detectPrimaryBioSite === 'function') {
-        await module.detectPrimaryBioSite(user, window.userKeywordCache[user]); // Handle the primary bio site detection
-      }
+      // render phase (append-only)
+      await safeCall(mod.displayFingerprint, dynamicContainer);
+      await safeCall(mod.displayClusters, dynamicContainer);
+      await safeCall(mod.displayGraph, dynamicContainer);
+      await safeCall(mod.showUserProfile, user, dynamicContainer);
 
-      if (typeof module.buildFingerprint === 'function') {
-        await module.buildFingerprint(user, window.userKeywordCache[user]); // Build user fingerprint if available
-      }
-
-      if (typeof module.displayFingerprint === 'function') {
-        await module.displayFingerprint();  // Display fingerprint data if available
-      }
-
-      if (typeof module.displayClusters === 'function') {
-        await module.displayClusters();  // Display clusters if available
-      }
-
-      if (typeof module.matchFingerprints === 'function') {
-        await module.matchFingerprints();  // Match fingerprints if available
-      }
-
-      if (typeof module.displayGraph === 'function') {
-        await module.displayGraph();  // Display graph if available
-      }
-
-      if (typeof module.inferPersona === 'function') {
-        await module.inferPersona(window.userKeywordCache[user]);  // Infer persona if available
-      }
-
-    } catch (error) {
-      console.warn(`Failed to load module ${fileName}:`, error);
+    } catch (err) {
+      console.warn(`Module failed: ${file}`, err);
     }
   }
 }
 
-async function fetchModuleFiles() {
+/* =========================
+   MODULE IMPORT (CACHED)
+========================= */
+async function importModule(file) {
+  if (moduleCache.has(file)) return moduleCache.get(file);
+
+  const mod = await import(`./modules/${file}`);
+  moduleCache.set(file, mod);
+  return mod;
+}
+
+/* =========================
+   SAFE FUNCTION CALL
+========================= */
+async function safeCall(fn, ...args) {
+  if (typeof fn === "function") {
+    try {
+      await fn(...args);
+    } catch (e) {
+      console.warn("Function execution error:", fn.name, e);
+    }
+  }
+}
+
+/* =========================
+   LOCAL PROFILE LOADER
+========================= */
+async function fetchLocalProfile(user) {
+  const container = document.getElementById("localProfile");
+
   try {
-    const response = await fetch('./modules/moduleList.json');  // Fetch module list JSON
-    if (!response.ok) {
-      throw new Error('Failed to fetch module list.');
-    }
-    const moduleList = await response.json();
-    return moduleList.files;  // This should return the "files" array from the JSON
-  } catch (error) {
-    console.error("Error fetching module list:", error);
-    return [];  // Return an empty array if there's an error fetching the JSON
-  }
-}
-// Fetch the local individual page for the user
-async function fetchLocalPage(username) {
-  try {
-    const response = await fetch(`individual/${username}.html`);
-    if (response.ok) {
-      const html = await response.text();
-      result.innerHTML += `
-        <section>
-          <h3>Local Individual Page</h3>
-          <div>${html}</div>
-        </section>
-      `;
-    } else {
-      console.warn(`Local page for ${username} not found.`);
-    }
-  } catch (error) {
-    console.warn(`Error fetching local page for ${username}:`, error);
+    const res = await fetch(`individual/${user}.html`);
+    if (!res.ok) return;
+
+    const html = await res.text();
+    container.innerHTML = html;
+  } catch (err) {
+    console.warn("Local profile load failed:", err);
   }
 }
 
+/* =========================
+   RESET STATE
+========================= */
 function resetState() {
-  window.userKeywordCache = {};
-  window.userFingerprints = {};
-  window.sourceConfidence = {};
+  window.userKeywordCache  = {};
+  window.userFingerprints  = {};
+  window.sourceConfidence  = {};
   window.aliasCandidates.clear();
 }
