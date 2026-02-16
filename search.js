@@ -12,18 +12,21 @@ window.userKeywordCache  = {};
 window.userFingerprints  = {};
 window.sourceConfidence  = {};
 window.aliasCandidates   = new Set();
+window.graphNodes        = [];
+window.graphLinks        = [];
 
 /* =========================
    INTERNAL CACHES
 ========================= */
-const moduleCache     = new Map();
-let moduleFileCache   = null;
+const moduleCache   = new Map();
+let moduleFileCache = null;
 
 /* =========================
    URL SEARCH AUTOLOAD
 ========================= */
 const params = new URLSearchParams(window.location.search);
 const autoSearch = params.get("search");
+
 if (autoSearch) {
   input.value = autoSearch;
   queueMicrotask(() => btn.click());
@@ -38,9 +41,6 @@ btn.onclick = async () => {
 
   resetState();
   renderBase(user);
-
-  // Ensure keyword cache exists
-  if (!window.userKeywordCache[user]) window.userKeywordCache[user] = {};
 
   try {
     const modules = await loadModulesOnce();
@@ -63,17 +63,21 @@ function renderBase(user) {
 }
 
 /* =========================
-   MODULE LOADING
+   MODULE LOADING (ONCE)
 ========================= */
 async function loadModulesOnce() {
   if (moduleFileCache) return moduleFileCache;
 
-  const res = await fetch("./modules/moduleList.json");
-  if (!res.ok) throw new Error("moduleList.json missing");
+  try {
+    const res = await fetch("./modules/OIST.js"); // single combined module
+    if (!res.ok) throw new Error("OIST.js missing");
 
-  const { files } = await res.json();
-  moduleFileCache = files.filter(f => !f.includes("template"));
-  return moduleFileCache;
+    moduleFileCache = ["OIST.js"];
+    return moduleFileCache;
+  } catch (err) {
+    console.error("Failed to load combined module:", err);
+    return [];
+  }
 }
 
 /* =========================
@@ -86,24 +90,23 @@ async function runModules(files, user) {
     try {
       const mod = await importModule(file);
 
-      // Ensure user keyword cache exists
-      if (!window.userKeywordCache[user]) window.userKeywordCache[user] = {};
-
-      // ordered execution safely
-      await safeCall(mod.loadGitHub, user, window.userKeywordCache[user]);
+      // Ordered execution
+      await safeCall(mod.loadGitHub, user, window.userKeywordCache[user] = {});
       await safeCall(mod.detectPrimaryBioSite, user, window.userKeywordCache[user]);
       await safeCall(mod.buildFingerprint, user, window.userKeywordCache[user]);
       await safeCall(mod.matchFingerprints);
       await safeCall(mod.inferPersona, window.userKeywordCache[user]);
+      await safeCall(mod.detectAliases, user);
 
-      // render phase (append-only), skip non-existing functions
+      // Render phase
       await safeCall(mod.displayFingerprint, dynamicContainer);
       await safeCall(mod.displayClusters, dynamicContainer);
-      // removed old `displayGraph` reference
+      await safeCall(mod.displayGraph, dynamicContainer);
+      await safeCall(mod.displayAliases, dynamicContainer);
       await safeCall(mod.showUserProfile, user, dynamicContainer);
 
     } catch (err) {
-      console.warn(`Module failed: ${file}`, err);
+      console.warn(`Module execution failed: ${file}`, err);
     }
   }
 }
@@ -114,9 +117,14 @@ async function runModules(files, user) {
 async function importModule(file) {
   if (moduleCache.has(file)) return moduleCache.get(file);
 
-  const mod = await import(`./modules/${file}`);
-  moduleCache.set(file, mod);
-  return mod;
+  try {
+    const mod = await import(`./modules/${file}`);
+    moduleCache.set(file, mod);
+    return mod;
+  } catch (err) {
+    console.error("Module import failed:", file, err);
+    return {};
+  }
 }
 
 /* =========================
@@ -126,8 +134,8 @@ async function safeCall(fn, ...args) {
   if (typeof fn === "function") {
     try {
       await fn(...args);
-    } catch (e) {
-      console.warn("Function execution error:", fn.name, e);
+    } catch (err) {
+      console.warn("Function execution error:", fn.name, err);
     }
   }
 }
@@ -137,7 +145,6 @@ async function safeCall(fn, ...args) {
 ========================= */
 async function fetchLocalProfile(user) {
   const container = document.getElementById("localProfile");
-
   try {
     const res = await fetch(`individual/${user}.html`);
     if (!res.ok) return;
@@ -157,4 +164,6 @@ function resetState() {
   window.userFingerprints  = {};
   window.sourceConfidence  = {};
   window.aliasCandidates.clear();
+  window.graphNodes        = [];
+  window.graphLinks        = [];
 }
