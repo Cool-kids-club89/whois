@@ -26,7 +26,7 @@ async function importModule(file) {
 }
 
 async function runModules(files, user) {
-  const dynamicContainer = document.getElementById("result");
+  const dynamicContainer = document.getElementById("dynamicProfile");
   for(const file of files) {
     const mod = await importModule(file);
     if(!window.userKeywordCache[user]) window.userKeywordCache[user]={};
@@ -48,14 +48,34 @@ btn.onclick = async ()=>{
   const user = input.value.trim();
   if(!user) return;
 
-  result.innerHTML="";
-  window.userKeywordCache={};
-  window.userFingerprints={};
-  window.sourceConfidence={};
-  window.aliasCandidates=new Set();
-  window.graphNodes=[];
-  window.graphLinks=[];
+  // Reset everything
+  result.innerHTML = `
+    <h2>Search Results for: ${user}</h2>
+    <div id="localProfile"></div>
+    <div id="dynamicProfile"></div>
+  `;
+  window.userKeywordCache = {};
+  window.userFingerprints = {};
+  window.sourceConfidence = {};
+  window.aliasCandidates = new Set();
+  window.graphNodes = [];
+  window.graphLinks = [];
 
+  const localContainer = document.getElementById("localProfile");
+  const dynamicContainer = document.getElementById("dynamicProfile");
+
+  // --- Load local profile first ---
+  try {
+    const res = await fetch(`individual/${user}.html`);
+    if(res.ok){
+      const html = await res.text();
+      localContainer.innerHTML = html;
+    }
+  } catch(err){
+    console.warn("Local profile load failed:", err);
+  }
+
+  // --- Load and run modules (internet) ---
   const modules = ["OIST.js"];
   await runModules(modules, user);
 };
