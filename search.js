@@ -62,10 +62,10 @@ async function loadModulesOnce(){
 async function importModule(file){
   if(moduleCache.has(file)) return moduleCache.get(file);
   try{
-    const mod = await import(`./modues/${file}`);
+    const mod = await import(`https://raw.githubusercontent.com/JamesHickers/whois/main/modues/${file}`);
     moduleCache.set(file, mod);
     return mod;
-  }catch(err){
+  } catch(err){
     console.error("Module import failed:", file, err);
     return {};
   }
