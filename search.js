@@ -6,7 +6,7 @@ const btn    = document.getElementById("searchBtn");
 const result = document.getElementById("result");
 
 /* =========================
-   GLOBAL STATE (INTENTIONAL)
+   GLOBAL STATE
 ========================= */
 window.userKeywordCache  = {};
 window.userFingerprints  = {};
@@ -16,15 +16,14 @@ window.aliasCandidates   = new Set();
 /* =========================
    INTERNAL CACHES
 ========================= */
-const moduleCache     = new Map();   // imported modules
-let moduleFileCache   = null;        // moduleList.json
+const moduleCache     = new Map();
+let moduleFileCache   = null;
 
 /* =========================
    URL SEARCH AUTOLOAD
 ========================= */
 const params = new URLSearchParams(window.location.search);
 const autoSearch = params.get("search");
-
 if (autoSearch) {
   input.value = autoSearch;
   queueMicrotask(() => btn.click());
@@ -39,6 +38,9 @@ btn.onclick = async () => {
 
   resetState();
   renderBase(user);
+
+  // Ensure keyword cache exists
+  if (!window.userKeywordCache[user]) window.userKeywordCache[user] = {};
 
   try {
     const modules = await loadModulesOnce();
@@ -61,7 +63,7 @@ function renderBase(user) {
 }
 
 /* =========================
-   MODULE LOADING (ONCE)
+   MODULE LOADING
 ========================= */
 async function loadModulesOnce() {
   if (moduleFileCache) return moduleFileCache;
@@ -84,17 +86,20 @@ async function runModules(files, user) {
     try {
       const mod = await importModule(file);
 
-      // ordered execution (important)
+      // Ensure user keyword cache exists
+      if (!window.userKeywordCache[user]) window.userKeywordCache[user] = {};
+
+      // ordered execution safely
       await safeCall(mod.loadGitHub, user, window.userKeywordCache[user]);
       await safeCall(mod.detectPrimaryBioSite, user, window.userKeywordCache[user]);
       await safeCall(mod.buildFingerprint, user, window.userKeywordCache[user]);
       await safeCall(mod.matchFingerprints);
       await safeCall(mod.inferPersona, window.userKeywordCache[user]);
 
-      // render phase (append-only)
+      // render phase (append-only), skip non-existing functions
       await safeCall(mod.displayFingerprint, dynamicContainer);
       await safeCall(mod.displayClusters, dynamicContainer);
-      await safeCall(mod.displayGraph, dynamicContainer);
+      // removed old `displayGraph` reference
       await safeCall(mod.showUserProfile, user, dynamicContainer);
 
     } catch (err) {
