@@ -1,11 +1,6 @@
-/* =========================
-   Search Handler (search.js)
-========================= */
-
-import * as OIST from "./OIST.js";
-
 /* DOM References */
 const input = document.getElementById("inputSearch");
+const mod = await import("./modues/OIST.js");
 const btn = document.getElementById("searchBtn");
 const result = document.getElementById("result");
 
