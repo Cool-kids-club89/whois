@@ -118,7 +118,7 @@ async function importModule(file) {
   if (moduleCache.has(file)) return moduleCache.get(file);
 
   try {
-    const mod = await import(`./modules/${file}`);
+    const mod = await import(`./modues/${file}`);
     moduleCache.set(file, mod);
     return mod;
   } catch (err) {
