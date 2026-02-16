@@ -23,7 +23,7 @@ let moduleFileCache = null;
 /* URL AutoSearch */
 const params = new URLSearchParams(window.location.search);
 const autoSearch = params.get("search");
-if(autoSearch){ input.value=autoSearch; queueMicrotask(()=>btn.click()); }
+if(autoSearch){ input.value = autoSearch; queueMicrotask(()=>btn.click()); }
 
 /* Reset state */
 function resetState(){
@@ -82,7 +82,7 @@ async function runModules(files,user){
   for(const file of files){
     try{
       const mod = await importModule(file);
-      if(!window.userKeywordCache[user]) window.userKeywordCache[user]={};
+      if(!window.userKeywordCache[user]) window.userKeywordCache[user] = {};
 
       await safeCall(mod.loadGitHub,user,window.userKeywordCache[user]);
       await safeCall(mod.detectAliases,user);
@@ -91,4 +91,43 @@ async function runModules(files,user){
       await safeCall(mod.matchFingerprints);
       await safeCall(mod.clusterUsers);
       await safeCall(mod.displayFingerprint,dynamicContainer);
-      await safeCall(mod.displayClusters,dynamicContainer)
+      await safeCall(mod.displayClusters,dynamicContainer);
+      await safeCall(mod.displayAliases,dynamicContainer);
+      await safeCall(mod.buildGraph,user);
+      await safeCall(mod.renderGraph,dynamicContainer);
+      await safeCall(mod.showUserProfile,user,dynamicContainer);
+    }catch(err){
+      console.warn(`Module execution failed: ${file}`, err);
+    }
+  }
+}
+
+/* =========================
+   Main Button Handler
+========================= */
+btn.onclick = async () => {
+  const user = input.value.trim();
+  if(!user) return;
+
+  resetState();
+  renderBase(user);
+
+  const localContainer = document.getElementById("localProfile");
+  const dynamicContainer = document.getElementById("dynamicProfile");
+
+  // Load local profile
+  try{
+    const res = await fetch(`individual/${user}.html`);
+    if(res.ok){ localContainer.innerHTML = await res.text(); }
+  }catch(err){ console.warn("Local profile load failed:", err); }
+
+  // Load modules
+  let modules = [];
+  try{ modules = await loadModulesOnce(); }catch(err){ console.error("Module load failed:",err); }
+
+  // Run modules (merge-aware)
+  try{ await runModules(modules,user); }catch(err){ console.error("Module execution failed:",err); }
+
+  // Unified profile display (local + online)
+  try{ await OIST.showUserProfile(user,dynamicContainer); }catch(err){ console.error("Unified profile display failed:",err); }
+};
