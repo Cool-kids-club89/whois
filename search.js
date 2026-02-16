@@ -12,12 +12,12 @@ window.graphLinks = [];
 const moduleCache = new Map();
 
 async function importModule(file) {
-  if (moduleCache.has(file)) return moduleCache.get(file);
-  try {
+  if(moduleCache.has(file)) return moduleCache.get(file);
+  try{
     const mod = await import(`./modues/${file}`);
     moduleCache.set(file, mod);
     return mod;
-  } catch (err) {
+  } catch(err){
     console.error("Module import failed:", file, err);
     return {};
   }
@@ -25,57 +25,61 @@ async function importModule(file) {
 
 async function runModules(user) {
   const dynamicContainer = document.getElementById("dynamicProfile");
-  const modules = ["OIST.js"];
+  const localContainer = document.getElementById("localProfile");
 
-  for (const file of modules) {
-    const mod = await importModule(file);
-    if (!window.userKeywordCache[user]) window.userKeywordCache[user] = {};
+  const mod = await importModule("OIST.js");
+  if(!window.userKeywordCache[user]) window.userKeywordCache[user]={};
+  const keywords = window.userKeywordCache[user];
 
-    // Extract keywords from local profile if exists
-    const localContainer = document.getElementById("localProfile");
-    if (localContainer?.innerText) {
-      await mod.extractKeywords(localContainer.innerText, user, window.userKeywordCache[user]);
-    }
-
-    // Detect aliases, build fingerprint, persona, display fingerprint
-    await mod.detectAliases(user);
-    await mod.buildFingerprint(user, window.userKeywordCache[user]);
-    await mod.inferPersona(window.userKeywordCache[user], dynamicContainer);
-    await mod.displayFingerprint(dynamicContainer);
-
-    // GitHub fetch / profile
-    await mod.showUserProfile(user, dynamicContainer);
+  // --- Local profile keywords ---
+  if(localContainer?.innerText){
+    mod.extractKeywords(localContainer.innerText, user, keywords);
   }
+
+  // --- GitHub keywords ---
+  await mod.fetchGitHubKeywords(user);
+
+  // --- Build unified profile ---
+  mod.detectAliases(user);
+  mod.buildFingerprint(user, keywords);
+  mod.inferPersona(keywords, dynamicContainer);
+  mod.displayFingerprint(dynamicContainer);
+
+  // --- Display merged keywords for debug ---
+  dynamicContainer.innerHTML += `<section>
+    <h3>All Keywords</h3>
+    <pre>${JSON.stringify(keywords,null,2)}</pre>
+  </section>`;
 }
 
 btn.onclick = async () => {
   const user = input.value.trim();
-  if (!user) return;
+  if(!user) return;
 
-  // Reset
+  // --- Reset ---
   result.innerHTML = `
     <h2>Search Results for: ${user}</h2>
     <div id="localProfile"></div>
     <div id="dynamicProfile"></div>
   `;
-  window.userKeywordCache = {};
-  window.userFingerprints = {};
-  window.sourceConfidence = {};
-  window.aliasCandidates = new Set();
-  window.graphNodes = [];
-  window.graphLinks = [];
+  window.userKeywordCache={};
+  window.userFingerprints={};
+  window.sourceConfidence={};
+  window.aliasCandidates=new Set();
+  window.graphNodes=[];
+  window.graphLinks=[];
 
-  // Load local profile
-  try {
+  // --- Load local profile ---
+  try{
     const localRes = await fetch(`individual/${user}.html`);
-    if (localRes.ok) {
-      const localHTML = await localRes.text();
-      document.getElementById("localProfile").innerHTML = localHTML;
+    if(localRes.ok){
+      const html = await localRes.text();
+      document.getElementById("localProfile").innerHTML = html;
     }
-  } catch (err) {
+  } catch(err){
     console.warn("Local profile load failed:", err);
   }
 
-  // Run modules
+  // --- Run modules (local + GitHub) ---
   await runModules(user);
 };
