@@ -1,28 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WHOIS Lookup</title>
-  <link rel="stylesheet" href="style.css">
-  
-  <!-- D3.js Library for graph rendering -->
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-
-  <!-- Single combined, future-proof script -->
-  <script type="module" src="search.js" defer></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unified OSINT Search</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
-  <div class="container">
-    <h1>WHOIS Lookup</h1>
-    <div class="search-box">
-      <input type="text" id="inputSearch" placeholder="Enter username or organization name">
-      <button id="searchBtn">Search</button>
-    </div>
-    <div id="result">
+
+<h1>OSINT / WHOIS Search</h1>
+<input id="inputSearch" type="text" placeholder="Username">
+<button id="searchBtn">Search</button>
+
+<div id="result">
   <div id="localProfile"></div>
   <div id="dynamicProfile"></div>
 </div>
-  </div>
+
+<script type="module" src="search.js"></script>
 </body>
 </html>
