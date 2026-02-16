@@ -69,7 +69,7 @@ async function loadModulesOnce() {
   if (moduleFileCache) return moduleFileCache;
 
   try {
-    const res = await fetch("./modules/OIST.js"); // single combined module
+    const res = await fetch("./modues/OIST.js"); // single combined module
     if (!res.ok) throw new Error("OIST.js missing");
 
     moduleFileCache = ["OIST.js"];
