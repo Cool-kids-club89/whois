@@ -1,63 +1,60 @@
 // search.js
-const input = document.getElementById("inputSearch");
-const btn = document.getElementById("searchBtn");
-const result = document.getElementById("result");
+const input=document.getElementById("inputSearch");
+const btn=document.getElementById("searchBtn");
+const result=document.getElementById("result");
 
-window.userKeywordCache = {};
-window.userFingerprints = {};
-window.sourceConfidence = {};
-window.aliasCandidates = new Set();
-window.graphNodes = [];
-window.graphLinks = [];
-const moduleCache = new Map();
+window.userKeywordCache={};
+window.userFingerprints={};
+window.sourceConfidence={};
+window.aliasCandidates=new Set();
+window.graphNodes=[];
+window.graphLinks=[];
+const moduleCache=new Map();
 
-async function importModule(file) {
+async function importModule(file){
   if(moduleCache.has(file)) return moduleCache.get(file);
   try{
-    const mod = await import(`./modues/${file}`);
-    moduleCache.set(file, mod);
+    const mod=await import(`./modues/${file}?cachebust=${Date.now()}`);
+    moduleCache.set(file,mod);
     return mod;
   } catch(err){
-    console.error("Module import failed:", file, err);
+    console.error("Module import failed:",file,err);
     return {};
   }
 }
 
-async function runModules(user) {
-  const dynamicContainer = document.getElementById("dynamicProfile");
-  const localContainer = document.getElementById("localProfile");
-
-  const mod = await importModule("OIST.js");
+async function runModules(user){
+  const dynamicContainer=document.getElementById("dynamicProfile");
+  const localContainer=document.getElementById("localProfile");
+  const mod=await importModule("OIST.js");
   if(!window.userKeywordCache[user]) window.userKeywordCache[user]={};
-  const keywords = window.userKeywordCache[user];
+  const keywords=window.userKeywordCache[user];
 
-  // --- Local profile keywords ---
-  if(localContainer?.innerText){
-    mod.extractKeywords(localContainer.innerText, user, keywords);
-  }
+  // --- Local profile ---
+  if(localContainer?.innerText) mod.extractKeywords(localContainer.innerText,user,keywords);
 
   // --- GitHub keywords ---
   await mod.fetchGitHubKeywords(user);
 
-  // --- Build unified profile ---
+  // --- Unified profile ---
   mod.detectAliases(user);
-  mod.buildFingerprint(user, keywords);
-  mod.inferPersona(keywords, dynamicContainer);
+  mod.buildFingerprint(user,keywords);
+  mod.inferPersona(keywords,dynamicContainer);
   mod.displayFingerprint(dynamicContainer);
 
-  // --- Display merged keywords for debug ---
-  dynamicContainer.innerHTML += `<section>
-    <h3>All Keywords</h3>
-    <pre>${JSON.stringify(keywords,null,2)}</pre>
-  </section>`;
+  // --- Graph ---
+  mod.buildGraph(user);
+  mod.renderGraph();
+
+  // --- Keywords debug ---
+  dynamicContainer.innerHTML+=`<section><h3>All Keywords</h3><pre>${JSON.stringify(keywords,null,2)}</pre></section>`;
 }
 
-btn.onclick = async () => {
-  const user = input.value.trim();
+btn.onclick=async ()=>{
+  const user=input.value.trim();
   if(!user) return;
 
-  // --- Reset ---
-  result.innerHTML = `
+  result.innerHTML=`
     <h2>Search Results for: ${user}</h2>
     <div id="localProfile"></div>
     <div id="dynamicProfile"></div>
@@ -69,17 +66,16 @@ btn.onclick = async () => {
   window.graphNodes=[];
   window.graphLinks=[];
 
-  // --- Load local profile ---
+  // --- Local profile fetch ---
   try{
-    const localRes = await fetch(`individual/${user}.html`);
+    const localRes=await fetch(`individual/${user}.html`);
     if(localRes.ok){
-      const html = await localRes.text();
-      document.getElementById("localProfile").innerHTML = html;
+      const html=await localRes.text();
+      document.getElementById("localProfile").innerHTML=html;
     }
   } catch(err){
-    console.warn("Local profile load failed:", err);
+    console.warn("Local profile load failed:",err);
   }
 
-  // --- Run modules (local + GitHub) ---
   await runModules(user);
 };
