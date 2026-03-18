@@ -17,60 +17,22 @@
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,"Segoe UI",sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.6;
+      line-height:1.6;
     }
-    header {
-      padding: 32px;
-      border-bottom: 1px solid var(--border);
-      background: linear-gradient(180deg, #0e1320, #0b0e13);
-    }
-    header h1 {
-      margin: 0;
-      font-size: 2rem;
-      letter-spacing: .05em;
-    }
-    header p {
-      margin: 8px 0 0;
-      color: var(--muted);
-    }
-    main {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 32px;
-    }
-    section {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 24px;
-      margin-bottom: 24px;
-    }
-    section h2 {
-      margin-top: 0;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 8px;
-      margin-bottom: 16px;
-      font-size: 1.25rem;
-    }
-    ul { padding-left: 20px; }
-    a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-    a:hover { text-decoration: underline; }
-    .risk-high {
-      color: var(--danger);
-      font-weight: 700;
-    }
-    footer {
-      padding: 24px;
-      text-align: center;
-      color: var(--muted);
-      border-top: 1px solid var(--border);
-    }
+    header { padding:32px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#0e1320,#0b0e13);}
+    header h1 { margin:0; font-size:2rem; letter-spacing:.05em;}
+    header p { margin:8px 0 0; color:var(--muted);}
+    main { max-width:1100px; margin:0 auto; padding:32px;}
+    section { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:24px; margin-bottom:24px;}
+    section h2 { margin-top:0; border-bottom:1px solid var(--border); padding-bottom:8px; margin-bottom:16px; font-size:1.25rem;}
+    ul { padding-left:20px;}
+    a { color:var(--accent); text-decoration:none;}
+    a:hover { text-decoration:underline;}
+    .risk-high { color:var(--danger); font-weight:700;}
+    footer { padding:24px; text-align:center; color:var(--muted); border-top:1px solid var(--border);}
   </style>
 </head>
 <body>
@@ -113,7 +75,7 @@
     <li>Cross-platform scripting (Lua, JavaScript, Python)</li>
     <li>Low-level system interaction and abuse surface analysis</li>
     <li>Known to infect others with malware and distribution</li>
-    <li>Sells pirated material, to make money, does CD ripping.</li>
+    <li>Sells pirated material, including CD ripping</li>
   </ul>
 </section>
 
@@ -131,10 +93,21 @@
 </section>
 
 <section>
-  <h2>Virtualization & Isolation Practices</h2>
-  <p>
-    Zippy makes extensive use of virtualization to isolate workflows and reduce host-level exposure.
+  <h2>Cryptography & Data Protection</h2>
+  <ul>
+    <li><strong>VeraCrypt</strong> used for all sensitive volumes</li>
+    <li>No LUKS deployment</li>
+    <li>Layered encryption practices for additional security</li>
+    <li>Offline storage of critical secrets and recovery material</li>
+    <li>Compartmentalized storage to isolate high-risk workflows</li>
+  </ul>
+  <p class="risk-high">
+    <strong>Data Security:</strong> Strong • Multi-layer cryptography minimizes compromise risk
   </p>
+</section>
+
+<section>
+  <h2>Virtualization & Isolation Practices</h2>
   <ul>
     <li>Primary reliance on <strong>VirtualBox</strong> for segmented environments</li>
     <li>Separate VMs for browsing, testing, and tooling</li>
@@ -186,8 +159,7 @@
   <h2>Final OSINT Summary</h2>
   <p>
     Zippy represents a technically mature, privacy-hardened individual operating within a Linux-exclusive environment,
-    with long-term exposure to adversarial systems and underground tooling ecosystems. Public artifacts expose only a limited,
-    intentionally constrained view of capabilities.
+    with long-term exposure to adversarial systems and underground tooling ecosystems. Uses VeraCrypt for strong cryptographic protection; LUKS is not deployed. Public artifacts expose only a limited, intentionally constrained view of capabilities.
   </p>
   <p class="risk-high">
     Tracking Difficulty: High • Predictability: Low • Technical Threat Potential: High
