@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <title>WHOIS — ΣΝΛ</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
 <style>
 :root {
   --bg:#0b0e13;
@@ -11,35 +12,120 @@
   --text:#e6e8ee;
   --muted:#9aa3b2;
   --accent:#7aa2ff;
-  --warning:#ffb86c;
-  --danger:#ff6b6b;
-  --good:#4ade80;
   --border:#1f2937;
+  --low:#4ade80;
+  --mid:#ffb86c;
 }
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
-header{padding:32px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#0e1320,#0b0e13)}
-header h1{margin:0;font-size:2rem;letter-spacing:.05em}
-header p{margin:8px 0 0;color:var(--muted)}
-main{max-width:1100px;margin:0 auto;padding:32px}
-section{margin-bottom:24px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:24px}
-section h2{margin-top:0;font-size:1.3rem;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-.item strong{display:block;color:var(--accent)}
-.tag{display:inline-block;padding:4px 10px;margin:4px 6px 0 0;border-radius:999px;font-size:.8rem;border:1px solid var(--border);color:var(--muted)}
-.risk-high{color:var(--danger)}
-.risk-mid{color:var(--warning)}
-.risk-low{color:var(--good)}
-footer{padding:24px;text-align:center;color:var(--muted);border-top:1px solid var(--border)}
-code{background:#0a0f1a;padding:2px 6px;border-radius:6px;color:var(--accent)}
-ul{padding-left:20px}
+
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+body{
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.5;
+}
+
+header{
+  padding:28px;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(#0e1320,#0b0e13);
+}
+
+h1{
+  font-size:1.8rem;
+  letter-spacing:.05em;
+}
+
+header p{
+  color:var(--muted);
+  margin-top:6px;
+  font-size:.9rem;
+}
+
+main{
+  max-width:1000px;
+  margin:auto;
+  padding:24px;
+}
+
+section{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:18px;
+  margin-bottom:16px;
+}
+
+h2{
+  font-size:1.2rem;
+  margin-bottom:12px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:6px;
+}
+
+h3{
+  font-size:1rem;
+  margin:12px 0 6px;
+  color:var(--accent);
+}
+
+p{margin-bottom:10px}
+
+ul{padding-left:18px}
+
+li{margin-bottom:6px}
+
+code{
+  background:#0a0f1a;
+  padding:2px 5px;
+  border-radius:4px;
+  color:var(--accent);
+}
+
+.risk-low{color:var(--low)}
+.risk-mid{color:var(--mid)}
+
+footer{
+  text-align:center;
+  padding:20px;
+  font-size:.85rem;
+  color:var(--muted);
+  border-top:1px solid var(--border);
+}
+
+/* REDACTION BLOCK */
+.redacted .redaction-block{
+  position:relative;
+  overflow:hidden;
+}
+
+.redacted .redaction-block::after{
+  content:"REDACTED";
+  position:absolute;
+  inset:0;
+  background:#000;
+  color:#555;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:600;
+  letter-spacing:.35em;
+  opacity:1;
+}
 </style>
+
 </head>
+
 <body>
 
 <header>
 <h1>WHOIS — ΣΝΛ</h1>
-<p>Legacy Handle: 4zx16 • Classification: Independent Developer / Hybrid Black & Gray Hat • Visibility: Low</p>
+<p>Identity: Sophia Klein • Legacy: 4zx16 • Independent Systems Developer • Visibility: Controlled</p>
 </header>
 
 <main>
@@ -47,189 +133,113 @@ ul{padding-left:20px}
 <section>
 <h2>Executive Summary</h2>
 <p>
-Senior Systems Developer specializing in private infrastructure and high-performance engineering. ΣΝΛ architects secure, scalable systems with an emphasis on privacy-first design and engine-level optimization. His approach prioritizes long-term maintainability and performance over industry trends.
+Independent systems developer focused on backend systems, infrastructure, databases, and performance-oriented architecture. Work emphasizes minimalism, maintainability, and reduced system surface area through deliberate design.
 </p>
 
 <h3>Core Specializations</h3>
 <ul>
-<li>Infrastructure Hardening</li>
-<li>System Performance Optimization</li>
-<li>Automated Pipeline Architecture</li>
-<li>Engine-Level Tooling</li>
+<li>Infrastructure Architecture & Server Management</li>
+<li>Database Design & Optimization</li>
+<li>Backend Development & Distributed Systems</li>
+<li>Performance Optimization (System & Engine Level)</li>
+<li>Offensive Security & Adversarial Testing</li>
+<li>Game Development, Direction & Narrative Design</li>
 </ul>
 </section>
 
 <section>
-<h2>Identity & Handle Evolution</h2>
-<p>
-Current operating handle: <strong>ΣΝΛ</strong>.  
-Former handle <code>4zx16</code> retained only on legacy artifacts and inactive accounts.
-</p>
+<h2>Operational Profile</h2>
+<p><strong>Optimization by subtraction</strong> — reducing unnecessary system components to improve clarity, determinism, and maintainability.</p>
 
-<p><strong>Historical Handles:</strong></p>
-<p>
-4zx16, not4zx16, DarkShadow5352, Dark Knight, Bluishparrot70, xqmvi, demonswith1n, rvxjzm, BNXID, UNXID, 4zx, 4
-</p>
+<ul>
+<li><strong>Backend Engineering:</strong> Scalable systems, API design, database architecture, and server infrastructure.</li>
 
-<p class="risk-mid">
-Post-rebrand identity reuse significantly reduced to minimize cross-platform correlation. Operates as a hybrid, switching sides between black-hat and gray-hat activities when strategic.
-</p>
+<li><strong>Game Development & Direction:</strong> Systems design combined with narrative structure and gameplay implementation.</li>
+
+<li><strong>Security Approach:</strong> Adversarial mindset applied to defensive architecture and system hardening strategies.</li>
+
+<li><strong>Security Research:</strong> Controlled testing environments for vulnerability analysis and defensive tooling development.</li>
+
+<li><strong>Infrastructure:</strong> Segmented, zero-trust environments focused on privacy and control.</li>
+
+<li><strong>Privacy:</strong> FOSS-first workflow with minimized telemetry and external dependencies.</li>
+</ul>
 </section>
 
 <section>
-<h2>Biographical Overview</h2>
-<p><strong>Nationality:</strong> Dual U.S.–Canada</p>
-<p><strong>Primary Roles:</strong> Full-stack development, systems architecture, game development, security research.</p>
-<p>
-Reputation characterized by strong technical proficiency, adaptive operational ethics, and infrastructure-oriented thinking.
-</p>
+<h2>Identity</h2>
+<p><strong>ΣΝΛ</strong> (primary) • <strong>Sophia Klein</strong> (professional)</p>
+<p>Legacy handle <code>4zx16</code> retained for attribution only.</p>
+</section>
+
+<section class="redacted">
+<h2>Environment</h2>
+
+<div class="redaction-block">
+<ul>
+<li>████████████████████████████████████</li>
+<li>████████████████████████████████████</li>
+<li>████████████████████████████████████</li>
+<li>████████████████████████████████████</li>
+</ul>
+</div>
+
+<p class="risk-low">Details redacted.</p>
 </section>
 
 <section>
-<h2>Security & Infrastructure Posture (Post-Rebrand)</h2>
+<h2>Security Posture</h2>
 
-<h3>Authentication Architecture</h3>
+<h3>Authentication</h3>
 <ul>
-<li><strong>Complete removal of SMS-based authentication and recovery mechanisms.</strong></li>
-<li><strong>Removal of all legacy authentication methods</strong> (app passwords, outdated OAuth grants, deprecated recovery vectors).</li>
-<li><strong>Hardware security keys (FIDO2 / WebAuthn)</strong> registered across primary identity providers.</li>
-<li><strong>Passkeys enabled</strong> where supported.</li>
-<li><strong>Multi-device authentication enrollment</strong> to eliminate single-device dependency.</li>
-<li><strong>Encrypted offline archival of recovery codes.</strong></li>
+<li>Hardware security keys (FIDO2 / WebAuthn)</li>
+<li>Passkeys enabled</li>
+<li>SMS and legacy recovery removed</li>
 </ul>
 
-<p class="risk-low">
-Telephony-based recovery risk eliminated. Phishing resistance substantially increased through hardware-bound authentication.
-</p>
-
-<h3>Endpoint Hardening</h3>
+<h3>System Hardening</h3>
 <ul>
-<li><strong>Full Disk Encryption enforced</strong> across all primary systems.</li>
-<li><strong>Secure Boot enabled</strong> on supported hardware.</li>
-<li><strong>Strict local account lockout policy enforced</strong> after failed authentication attempts.</li>
-<li><strong>Reduced administrative surface</strong> (least-privilege configuration).</li>
-<li><strong>Legacy protocols and insecure services disabled.</strong></li>
+<li>Full disk encryption</li>
+<li>Secure boot</li>
+<li>Strict authentication lockout policies</li>
+<li>Least-privilege configuration</li>
 </ul>
 
-<p class="risk-low">
-Local brute-force feasibility significantly reduced through aggressive lockout policy and hardened configuration.
-</p>
-
-<h3>Cryptographic Controls & Data Protection</h3>
+<h3>Encryption Model</h3>
 <ul>
-<li><strong>LUKS Full Disk Encryption</strong> enforced across primary Linux systems.</li>
-<li><strong>VeraCrypt containers and volumes</strong> used for compartmentalized sensitive data storage.</li>
-<li><strong>Layered encryption model</strong> (disk-level + container-level separation).</li>
-<li><strong>Selective data isolation</strong> to prevent cross-context exposure.</li>
-<li><strong>Manual key management practices</strong> (non-centralized, reduced recovery exposure).</li>
-<li><strong>Offline storage of critical secrets and recovery material.</strong></li>
+<li>LUKS disk encryption</li>
+<li>VeraCrypt segmented storage</li>
+<li>Manual key management</li>
 </ul>
 
-<p class="risk-low">
-Data exposure risk significantly reduced through multi-layer encryption strategy and compartmentalized storage design.
-</p>
-
-<p class="risk-mid">
-Operational complexity increased. Improper key handling or loss may result in permanent data inaccessibility.
-</p>
-
-<h3>Operating System Compartmentalization</h3>
-<ul>
-<li><strong>Fedora:</strong> Primary daily driver and hardened workstation environment.</li>
-<li><strong>Arch Linux:</strong> Advanced control, customization, and performance tuning.</li>
-<li><strong>Debian:</strong> Stability-focused environment for reliable workloads.</li>
-<li><strong>CachyOS:</strong> Performance-optimized Arch-based system.</li>
-<li><strong>Kali Linux:</strong> Security testing and specialized workflows.</li>
-</ul>
-
-<p class="risk-low">
-All Windows environments fully deprecated. System surface reduced through exclusive Linux-based operations.
-</p>
-
-<h3>Previous Operating Systems (Deprecated)</h3>
-<ul>
-<li>Windows 10 (ESU)</li>
-<li>Windows 11</li>
-<li>Linux Mint</li>
-<li>Linux Lite</li>
-</ul>
-
-<p class="risk-mid">
-Legacy operating systems no longer in use. Migration to Linux-only environments completed.
-</p>
-
-<h3>Virtualization & Isolation</h3>
-<ul>
-<li><strong>VirtualBox sandbox environments</strong> for untrusted execution.</li>
-<li><strong>Snapshot rollback methodology</strong> for high-risk workflows.</li>
-<li><strong>Separation of development and daily-use contexts.</strong></li>
-</ul>
-
-<h3>Browser & Network Controls</h3>
-<ul>
-<li><strong>LibreWolf</strong> as primary browser.</li>
-<li>Strict tracking protection and third-party cookie blocking.</li>
-<li>Minimal extension footprint.</li>
-<li>Session review and periodic token invalidation.</li>
-</ul>
-
+<p class="risk-mid">Increased security at the cost of operational complexity and recovery risk.</p>
 </section>
 
 <section>
-<h2>Security Delta Summary</h2>
+<h2>Development Focus</h2>
+<ul>
+<li>Backend systems and API architecture</li>
+<li>Database performance and optimization</li>
+<li>Game systems + narrative integration</li>
+<li>Long-term maintainability over rapid iteration</li>
+</ul>
+</section>
 
-<table style="width:100%;border-collapse:collapse;">
-<tr>
-<th style="text-align:left;border-bottom:1px solid var(--border);padding:8px;">Category</th>
-<th style="text-align:left;border-bottom:1px solid var(--border);padding:8px;">Pre-Rebrand</th>
-<th style="text-align:left;border-bottom:1px solid var(--border);padding:8px;">Current State</th>
-</tr>
-<tr>
-<td style="padding:8px;">Operating Systems</td>
-<td>Mixed Windows/Linux</td>
-<td>Linux-only (multi-distro)</td>
-</tr>
-<tr>
-<td style="padding:8px;">2FA Model</td>
-<td>Single-device TOTP</td>
-<td>Hardware-bound + Multi-device</td>
-</tr>
-<tr>
-<td style="padding:8px;">Recovery Strategy</td>
-<td>SMS fallback present</td>
-<td>SMS removed, offline recovery only</td>
-</tr>
-<tr>
-<td style="padding:8px;">Local Lockout Policy</td>
-<td>Standard</td>
-<td>Strict lockout after failed attempts</td>
-</tr>
-<tr>
-<td style="padding:8px;">Legacy Auth</td>
-<td>Partial</td>
-<td>Fully deprecated</td>
-</tr>
-<tr>
-<td style="padding:8px;">OS Isolation</td>
-<td>Limited</td>
-<td>Structured multi-environment</td>
-</tr>
-<tr>
-<td style="padding:8px;">Encryption</td>
-<td>Disk-level only / basic</td>
-<td>Layered: LUKS + VeraCrypt + additional crypto</td>
-</tr>
-</table>
-
-<p class="risk-low">
-Security posture significantly strengthened through full Linux migration, hybrid operational flexibility, and multi-layer encryption strategy.
-</p>
-
+<section>
+<h2>Tradeoffs</h2>
+<ul>
+<li>Higher system complexity</li>
+<li>Increased maintenance overhead</li>
+<li>Strict key management risks</li>
+<li>Reduced convenience for security gain</li>
+</ul>
 </section>
 
 </main>
 
-<footer>WHOIS Report • ΣΝΛ • Legacy identity: 4zx16 • Hybrid Black/Gray Hat • Senior Systems Developer</footer>
+<footer>
+ΣΝΛ • Independent Systems Developer • 4zx16 (legacy)
+</footer>
 
 </body>
 </html>
