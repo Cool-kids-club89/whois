@@ -1,121 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>WHOIS — ΣΝΛ</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>4zx16 — Profile (Sophia Klein)</title>
 
 <style>
-:root {
-  --bg:#0b0e13;
-  --panel:#121722;
-  --text:#e6e8ee;
-  --muted:#9aa3b2;
-  --accent:#7aa2ff;
-  --border:#1f2937;
-  --low:#4ade80;
-  --mid:#ffb86c;
-}
-
-*{
-  margin:0;
-  padding:0;
-  box-sizing:border-box;
-}
-
 body{
-  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  line-height:1.5;
+  font-family: "Linux Libertine","Georgia",serif;
+  margin:0;
+  background:#fff;
+  color:#202122;
+  line-height:1.6;
 }
 
 header{
-  padding:28px;
-  border-bottom:1px solid var(--border);
-  background:linear-gradient(#0e1320,#0b0e13);
+  border-bottom:1px solid #a2a9b1;
+  padding:20px 30px;
 }
 
-h1{
-  font-size:1.8rem;
-  letter-spacing:.05em;
+h1{ margin:0; font-size:2.2rem; }
+
+.container{
+  display:flex;
+  max-width:1200px;
+  margin:0 auto;
+  padding:20px 30px;
+  gap:24px;
 }
 
-header p{
-  color:var(--muted);
-  margin-top:6px;
-  font-size:.9rem;
+.main{ flex:1; }
+
+.infobox{
+  width:300px;
+  border:1px solid #a2a9b1;
+  background:#f8f9fa;
+  padding:12px;
+  font-size:14px;
 }
 
-main{
-  max-width:1000px;
-  margin:auto;
-  padding:24px;
-}
-
-section{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:8px;
-  padding:18px;
-  margin-bottom:16px;
-}
-
-h2{
-  font-size:1.2rem;
-  margin-bottom:12px;
-  border-bottom:1px solid var(--border);
+.infobox h3{
+  margin:0 0 10px;
+  text-align:center;
+  border-bottom:1px solid #a2a9b1;
   padding-bottom:6px;
 }
 
-h3{
-  font-size:1rem;
-  margin:12px 0 6px;
-  color:var(--accent);
+.infobox table{
+  width:100%;
+  border-collapse:collapse;
 }
 
-p{margin-bottom:10px}
-
-ul{padding-left:18px}
-
-li{margin-bottom:6px}
-
-code{
-  background:#0a0f1a;
-  padding:2px 5px;
-  border-radius:4px;
-  color:var(--accent);
+.infobox td{
+  padding:4px 0;
+  vertical-align:top;
 }
 
-.risk-low{color:var(--low)}
-.risk-mid{color:var(--mid)}
+.section-title{
+  border-bottom:1px solid #a2a9b1;
+  padding-bottom:4px;
+  margin-top:24px;
+}
+
+ul{ padding-left:22px; }
+
+.small{
+  color:#54595d;
+  font-size:13px;
+}
 
 footer{
-  text-align:center;
-  padding:20px;
-  font-size:.85rem;
-  color:var(--muted);
-  border-top:1px solid var(--border);
-}
-
-/* REDACTION BLOCK */
-.redacted .redaction-block{
-  position:relative;
-  overflow:hidden;
-}
-
-.redacted .redaction-block::after{
-  content:"REDACTED";
-  position:absolute;
-  inset:0;
-  background:#000;
-  color:#555;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight:600;
-  letter-spacing:.35em;
-  opacity:1;
+  border-top:1px solid #a2a9b1;
+  padding:20px 30px;
+  font-size:13px;
+  color:#54595d;
 }
 </style>
 
@@ -124,110 +82,116 @@ footer{
 <body>
 
 <header>
-<h1>WHOIS — ΣΝΛ</h1>
-<p>Identity: Sophia Klein • Legacy: 4zx16 • Independent Systems Developer • Visibility: Controlled</p>
+  <h1>4zx16</h1>
+  <div class="small">Developer profile article</div>
 </header>
 
-<main>
+<div class="container">
 
-<section>
-<h2>Executive Summary</h2>
+<!-- INFBOX -->
+<aside class="infobox">
+  <h3>Profile</h3>
+  <table>
+    <tr><td><b>Primary name</b></td><td>ΣΝΛ</td></tr>
+    <tr><td><b>Legacy handle</b></td><td>4zx16</td></tr>
+    <tr><td><b>Other aliases</b></td><td>Multiple (see article)</td></tr>
+    <tr><td><b>Occupation</b></td><td>Systems Developer</td></tr>
+    <tr><td><b>Fields</b></td><td>Software, Games, Infrastructure</td></tr>
+    <tr><td><b>Specialties</b></td><td>Backend systems, databases, architecture</td></tr>
+    <tr><td><b>Personality</b></td><td>ISTP</td></tr>
+    <tr><td><b>Zodiac</b></td><td>Libra (Second Decan)</td></tr>
+  </table>
+</aside>
+
+<main class="main">
+
 <p>
-Independent systems developer focused on backend systems, infrastructure, databases, and performance-oriented architecture. Work emphasizes minimalism, maintainability, and reduced system surface area through deliberate design.
+<b>4zx16</b> is the legacy identity of a systems developer currently operating under the primary handle
+<b>ΣΝΛ</b>. The profile spans software engineering, backend systems, infrastructure design, and game development.
 </p>
 
-<h3>Core Specializations</h3>
+<h2 class="section-title">Aliases</h2>
 <ul>
-<li>Infrastructure Architecture & Server Management</li>
-<li>Database Design & Optimization</li>
-<li>Backend Development & Distributed Systems</li>
-<li>Performance Optimization (System & Engine Level)</li>
-<li>Offensive Security & Adversarial Testing</li>
-<li>Game Development, Direction & Narrative Design</li>
+  <li>ΣΝΛ (primary identity)</li>
+  <li>4zx16 (legacy handle)</li>
+  <li>not4zx16</li>
+  <li>DarkShadow5352</li>
+  <li>Dark Knight</li>
+  <li>Bluishparrot70</li>
+  <li>xqmvi</li>
+  <li>demonswith1n</li>
+  <li>rvxjzm</li>
+  <li>BNXID</li>
+  <li>UNXID</li>
+  <li>4zx</li>
 </ul>
-</section>
 
-<section>
-<h2>Operational Profile</h2>
-<p><strong>Optimization by subtraction</strong> — reducing unnecessary system components to improve clarity, determinism, and maintainability.</p>
+<h2 class="section-title">Overview</h2>
+<p>
+The subject is a systems-focused developer working across backend engineering, infrastructure, database systems,
+and interactive software development including game systems and narrative design.
+</p>
 
+<h2 class="section-title">Personal Profile</h2>
 <ul>
-<li><strong>Backend Engineering:</strong> Scalable systems, API design, database architecture, and server infrastructure.</li>
-
-<li><strong>Game Development & Direction:</strong> Systems design combined with narrative structure and gameplay implementation.</li>
-
-<li><strong>Security Approach:</strong> Adversarial mindset applied to defensive architecture and system hardening strategies.</li>
-
-<li><strong>Security Research:</strong> Controlled testing environments for vulnerability analysis and defensive tooling development.</li>
-
-<li><strong>Infrastructure:</strong> Segmented, zero-trust environments focused on privacy and control.</li>
-
-<li><strong>Privacy:</strong> FOSS-first workflow with minimized telemetry and external dependencies.</li>
+  <li><b>Personality Type:</b> ISTP</li>
+  <li><b>Zodiac Sign:</b> Libra (Second Decan)</li>
 </ul>
-</section>
 
-<section>
-<h2>Identity</h2>
-<p><strong>ΣΝΛ</strong> (primary) • <strong>Sophia Klein</strong> (professional)</p>
-<p>Legacy handle <code>4zx16</code> retained for attribution only.</p>
-</section>
-
-<section class="redacted">
-<h2>Environment</h2>
-
-<div class="redaction-block">
+<h2 class="section-title">Core Skills</h2>
 <ul>
-<li>████████████████████████████████████</li>
-<li>████████████████████████████████████</li>
-<li>████████████████████████████████████</li>
-<li>████████████████████████████████████</li>
+  <li>Backend system architecture</li>
+  <li>Database design and optimization</li>
+  <li>Server infrastructure and management</li>
+  <li>API development and distributed systems</li>
+  <li>Game development and direction</li>
+  <li>Narrative design and world-building</li>
+  <li>Engine-level performance optimization</li>
+  <li>Security research and system analysis</li>
 </ul>
+
+<h2 class="section-title">Technical Focus</h2>
+<p>
+Work emphasizes performance-oriented engineering, modular system design, and long-term maintainability through
+structured architecture and reduced system complexity.
+</p>
+
+<h2 class="section-title">Systems & Infrastructure</h2>
+<ul>
+  <li>Linux-based multi-environment workflows</li>
+  <li>Separated development and testing environments</li>
+  <li>Virtualized execution sandboxes</li>
+  <li>Snapshot-based rollback systems</li>
+</ul>
+
+<h2 class="section-title">Security Practices</h2>
+<ul>
+  <li>Hardware-based authentication (FIDO2 / WebAuthn)</li>
+  <li>Passkey authentication systems</li>
+  <li>Full disk encryption (LUKS)</li>
+  <li>Encrypted containers (VeraCrypt)</li>
+  <li>Manual key management practices</li>
+</ul>
+
+<h2 class="section-title">Development Areas</h2>
+<ul>
+  <li>Backend systems and API architecture</li>
+  <li>Database performance engineering</li>
+  <li>Game systems and interactive design</li>
+  <li>Infrastructure automation and tooling</li>
+</ul>
+
+<h2 class="section-title">Summary</h2>
+<p>
+4zx16 / ΣΝΛ is a multi-domain developer with experience across backend systems, infrastructure engineering,
+and game development. The profile combines software engineering depth with cross-disciplinary design capabilities.
+</p>
+
+</main>
 </div>
 
-<p class="risk-low">Details redacted.</p>
-</section>
-
-<section>
-<h2>Security Posture</h2>
-
-<h3>Authentication</h3>
-<ul>
-<li>Hardware security keys (FIDO2 / WebAuthn)</li>
-<li>Passkeys enabled</li>
-<li>SMS and legacy recovery removed</li>
-</ul>
-
-<h3>System Hardening</h3>
-<ul>
-<li>Full disk encryption</li>
-<li>Secure boot</li>
-<li>Strict authentication lockout policies</li>
-<li>Least-privilege configuration</li>
-</ul>
-
-<h3>Encryption Model</h3>
-<ul>
-<li>LUKS disk encryption</li>
-<li>VeraCrypt segmented storage</li>
-<li>Manual key management</li>
-</ul>
-
-<p class="risk-mid">Increased security at the cost of operational complexity and recovery risk.</p>
-</section>
-
-<section>
-<h2>Development Focus</h2>
-<ul>
-<li>Backend systems and API architecture</li>
-<li>Database performance and optimization</li>
-<li>Game systems + narrative integration</li>
-<li>Long-term maintainability over rapid iteration</li>
-</ul>
-</section>
-</main>
-
 <footer>
-ΣΝΛ • Independent Systems Developer • 4zx16 (legacy)
+Wikipedia-style profile entry • 4zx16 / ΣΝΛ
 </footer>
 
 </body>
