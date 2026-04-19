@@ -1,80 +1,86 @@
-// search.js
-const input=document.getElementById("inputSearch");
-const btn=document.getElementById("searchBtn");
-const result=document.getElementById("result");
+const input = document.getElementById("inputSearch");
+const btn = document.getElementById("searchBtn");
+const result = document.getElementById("result");
 
-window.userKeywordCache={};
-window.userFingerprints={};
-window.sourceConfidence={};
-window.aliasCandidates=new Set();
-window.graphNodes=[];
-window.graphLinks=[];
-const moduleCache=new Map();
+const moduleCache = new Map();
 
-async function importModule(file){
-  if(moduleCache.has(file)) return moduleCache.get(file);
-  try{
-    const mod=await import(`./modues/${file}?cachebust=${Date.now()}`);
-    moduleCache.set(file,mod);
+const state = {
+  keywordCache: {},
+  fingerprints: {},
+  confidence: {},
+  aliasCandidates: new Set(),
+  graphNodes: [],
+  graphLinks: []
+};
+
+async function importModule(file) {
+  if (moduleCache.has(file)) return moduleCache.get(file);
+
+  try {
+    const mod = await import(`./modues/${file}`);
+    moduleCache.set(file, mod);
     return mod;
-  } catch(err){
-    console.error("Module import failed:",file,err);
+  } catch (err) {
+    console.error("Module load failed:", file, err);
     return {};
   }
 }
 
-async function runModules(user){
-  const dynamicContainer=document.getElementById("dynamicProfile");
-  const localContainer=document.getElementById("localProfile");
-  const mod=await importModule("OIST.js");
-  if(!window.userKeywordCache[user]) window.userKeywordCache[user]={};
-  const keywords=window.userKeywordCache[user];
+async function runModules(user) {
+  const dynamic = document.getElementById("dynamicProfile");
+  const local = document.getElementById("localProfile");
 
-  // --- Local profile ---
-  if(localContainer?.innerText) mod.extractKeywords(localContainer.innerText,user,keywords);
+  const mod = await importModule("OIST.js");
 
-  // --- GitHub keywords ---
+  const keywords = state.keywordCache[user] ??= {};
+
+  if (local?.innerText) {
+    mod.extractKeywords(local.innerText, user, keywords);
+  }
+
   await mod.fetchGitHubKeywords(user);
 
-  // --- Unified profile ---
   mod.detectAliases(user);
-  mod.buildFingerprint(user,keywords);
-  mod.inferPersona(keywords,dynamicContainer);
-  mod.displayFingerprint(dynamicContainer);
+  mod.buildFingerprint(user, keywords);
+  mod.inferPersona(keywords, dynamic);
+  mod.displayFingerprint(dynamic);
 
-  // --- Graph ---
   mod.buildGraph(user);
   mod.renderGraph();
 
-  // --- Keywords debug ---
-  dynamicContainer.innerHTML+=`<section><h3>All Keywords</h3><pre>${JSON.stringify(keywords,null,2)}</pre></section>`;
+  const debug = document.createElement("section");
+  debug.innerHTML = `
+    <h3>All Keywords</h3>
+    <pre>${JSON.stringify(keywords, null, 2)}</pre>
+  `;
+  dynamic.appendChild(debug);
 }
 
-btn.onclick=async ()=>{
-  const user=input.value.trim();
-  if(!user) return;
+btn.onclick = async () => {
+  const user = input.value.trim();
+  if (!user) return;
 
-  result.innerHTML=`
+  result.innerHTML = `
     <h2>Search Results for: ${user}</h2>
     <div id="localProfile"></div>
     <div id="dynamicProfile"></div>
   `;
-  window.userKeywordCache={};
-  window.userFingerprints={};
-  window.sourceConfidence={};
-  window.aliasCandidates=new Set();
-  window.graphNodes=[];
-  window.graphLinks=[];
 
-  // --- Local profile fetch ---
-  try{
-    const localRes=await fetch(`individual/${user}.html`);
-    if(localRes.ok){
-      const html=await localRes.text();
-      document.getElementById("localProfile").innerHTML=html;
+  // reset state cleanly
+  state.keywordCache = {};
+  state.fingerprints = {};
+  state.confidence = {};
+  state.aliasCandidates = new Set();
+  state.graphNodes = [];
+  state.graphLinks = [];
+
+  try {
+    const res = await fetch(`individual/${user}.html`);
+    if (res.ok) {
+      document.getElementById("localProfile").innerHTML = await res.text();
     }
-  } catch(err){
-    console.warn("Local profile load failed:",err);
+  } catch (err) {
+    console.warn("Local profile load failed:", err);
   }
 
   await runModules(user);
