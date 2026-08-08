@@ -1,37 +1,33 @@
-// OIST.js
-// Unified OSINT Analysis Module
-// Compatible with the current whois/script.js controller.
-//
-// Expected controller API:
-//
-//   extractKeywords(text, user, store)
-//   fetchGitHubKeywords(user)
-//   detectAliases(user)
-//   buildFingerprint(user, keywords)
-//   inferPersona(keywords, container)
-//   displayFingerprint(container)
-//   buildGraph(user)
-//   renderGraph()
-//
-// The controller intentionally owns:
-//   state.keywordCache
-//   state.fingerprints
-//   state.confidence
-//   state.aliasCandidates
-//   state.graphNodes
-//   state.graphLinks
-//
-// This module maintains its own internal per-user analysis cache so
-// it does not require modifications to the controller.
-
 "use strict";
 
+/*
+ * OIST.js
+ *
+ * Unified OSINT analysis module.
+ *
+ * Designed specifically for:
+ *
+ *     whois/
+ *     ├── script.js
+ *     ├── individual/
+ *     └── modues/
+ *         └── OIST.js
+ *
+ * The controller explicitly passes its state into this module.
+ * No window-global state is required.
+ */
 
 // ============================================================
-// INTERNAL STATE
+// INTERNAL SESSION STATE
 // ============================================================
 
 const sessions = new Map();
+
+function normalize(value) {
+    return String(value ?? "")
+        .trim()
+        .toLowerCase();
+}
 
 function getSession(user) {
     const key = normalize(user);
@@ -41,15 +37,10 @@ function getSession(user) {
             username: key,
 
             aliases: new Set(),
-
             sources: new Set(),
 
-            fingerprints: {},
-
+            fingerprints: null,
             confidence: {},
-
-            graphNodes: [],
-            graphLinks: [],
 
             github: {
                 found: false,
@@ -61,16 +52,20 @@ function getSession(user) {
 
             personaSignals: [],
 
-            warnings: []
+            graphNodes: [],
+            graphLinks: [],
+
+            warnings: [],
+
+            keywords: null
         });
     }
 
     return sessions.get(key);
 }
 
-
 // ============================================================
-// CONSTANTS
+// CONFIGURATION
 // ============================================================
 
 const CONFIG = Object.freeze({
@@ -78,6 +73,8 @@ const CONFIG = Object.freeze({
 
     githubPerPage: 100,
     githubMaxPages: 5,
+
+    requestTimeout: 10000,
 
     maxKeywordLength: 64,
     maxKeywords: 2500,
@@ -87,9 +84,8 @@ const CONFIG = Object.freeze({
     maxGraphNodes: 500,
     maxGraphLinks: 1000,
 
-    requestTimeout: 10000
+    maxRepositoriesInGraph: 100
 });
-
 
 const BLACKLIST = new Set([
     "http",
@@ -133,46 +129,17 @@ const BLACKLIST = new Set([
     "projects"
 ]);
 
-
 // ============================================================
-// GENERAL UTILITIES
+// DOM UTILITIES
 // ============================================================
-
-function normalize(value) {
-    return String(value ?? "")
-        .trim()
-        .toLowerCase();
-}
-
-
-function escapeHTML(value) {
-    return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-
-function unique(array) {
-    return [...new Set(array)];
-}
-
-
-function addWarning(user, message) {
-    const session = getSession(user);
-
-    if (!session.warnings.includes(message)) {
-        session.warnings.push(message);
-    }
-}
-
 
 function createSection(title) {
-    const section = document.createElement("section");
+    const section =
+        document.createElement("section");
 
-    const heading = document.createElement("h3");
+    const heading =
+        document.createElement("h3");
+
     heading.textContent = title;
 
     section.appendChild(heading);
@@ -180,66 +147,100 @@ function createSection(title) {
     return section;
 }
 
-
 function createListItem(label, value) {
-    const li = document.createElement("li");
+    const li =
+        document.createElement("li");
 
-    const strong = document.createElement("strong");
-    strong.textContent = `${label}: `;
+    const strong =
+        document.createElement("strong");
+
+    strong.textContent =
+        `${label}: `;
 
     li.appendChild(strong);
+
     li.appendChild(
-        document.createTextNode(String(value))
+        document.createTextNode(
+            String(value)
+        )
     );
 
     return li;
 }
 
+function unique(array) {
+    return [...new Set(array)];
+}
+
+function addWarning(user, message) {
+    const session =
+        getSession(user);
+
+    if (
+        !session.warnings.includes(message)
+    ) {
+        session.warnings.push(message);
+    }
+}
 
 // ============================================================
 // KEYWORD EXTRACTION
 // ============================================================
 
-export function extractKeywords(text, user, store) {
+export function extractKeywords(
+    text,
+    user,
+    store
+) {
     if (!text || !store) {
         return store;
     }
 
-    const username = normalize(user);
+    const username =
+        normalize(user);
 
-    let source = String(text);
-
-    /*
-     * Don't allow an enormous document to create an
-     * unbounded keyword store.
-     */
-    source = source.slice(0, 100000);
+    let source =
+        String(text).slice(0, 100000);
 
     /*
-     * Normalize URLs before tokenization.
+     * Remove URLs before tokenization.
      */
     source = source
         .replace(
-            /https?:\/\/[^\s]+/gi,
+            /https?:\/\/[^\s"'<>]+/gi,
             " "
         )
         .replace(
-            /www\.[^\s]+/gi,
+            /www\.[^\s"'<>]+/gi,
             " "
         );
 
-    const tokens = source
-        .toLowerCase()
-        .match(/[a-z0-9][a-z0-9._+-]*/g) || [];
+    const tokens =
+        source
+            .toLowerCase()
+            .match(
+                /[a-z0-9][a-z0-9._+-]*/g
+            ) || [];
 
-    for (let token of tokens) {
-        token = token
-            .replace(/^[._+-]+/, "")
-            .replace(/[._+-]+$/, "");
+    for (
+        let token of tokens
+    ) {
+        token =
+            token
+                .replace(
+                    /^[._+-]+/,
+                    ""
+                )
+                .replace(
+                    /[._+-]+$/,
+                    ""
+                );
 
         if (
-            token.length < 4 ||
-            token.length > CONFIG.maxKeywordLength
+            token.length <
+                4 ||
+            token.length >
+                CONFIG.maxKeywordLength
         ) {
             continue;
         }
@@ -252,7 +253,7 @@ export function extractKeywords(text, user, store) {
         }
 
         /*
-         * Ignore obvious HTML/CSS fragments.
+         * Avoid obvious markup fragments.
          */
         if (
             token.startsWith("class") ||
@@ -262,16 +263,16 @@ export function extractKeywords(text, user, store) {
             continue;
         }
 
-        /*
-         * Don't allow the keyword dictionary to grow
-         * without bounds.
-         */
-        if (
-            !Object.prototype.hasOwnProperty.call(
+        const exists =
+            Object.prototype.hasOwnProperty.call(
                 store,
                 token
-            ) &&
-            Object.keys(store).length >= CONFIG.maxKeywords
+            );
+
+        if (
+            !exists &&
+            Object.keys(store).length >=
+                CONFIG.maxKeywords
         ) {
             break;
         }
@@ -280,89 +281,102 @@ export function extractKeywords(text, user, store) {
             (store[token] || 0) + 1;
     }
 
-    /*
-     * Synchronize the internal session.
-     */
-    const session = getSession(user);
-    session.sources.add("Local profile");
+    const session =
+        getSession(user);
+
+    session.sources.add(
+        "Local profile"
+    );
+
+    session.keywords =
+        store;
 
     return store;
 }
-
 
 // ============================================================
 // ALIAS DETECTION
 // ============================================================
 
 function generateLeetspeak(value) {
+    const map = {
+        a: "4",
+        e: "3",
+        i: "1",
+        o: "0",
+        s: "5"
+    };
+
     return value.replace(
         /[aeios]/g,
-        character => {
-            const map = {
-                a: "4",
-                e: "3",
-                i: "1",
-                o: "0",
-                s: "5"
-            };
-
-            return map[character] || character;
-        }
+        character =>
+            map[character] ||
+            character
     );
 }
 
+export function detectAliases(
+    user,
+    aliasStore
+) {
+    const username =
+        normalize(user);
 
-export function detectAliases(user) {
-    const username = normalize(user);
-    const session = getSession(user);
+    const session =
+        getSession(user);
 
     if (!username) {
         return [];
     }
 
-    const aliases = new Set();
+    const aliases =
+        new Set();
 
     const add = alias => {
-        alias = normalize(alias);
+        alias =
+            normalize(alias);
 
         if (
             alias &&
-            aliases.size < CONFIG.maxAliases
+            aliases.size <
+                CONFIG.maxAliases
         ) {
             aliases.add(alias);
         }
     };
 
-    /*
-     * Original username.
-     */
     add(username);
 
     /*
-     * Numeric-stripped version.
+     * Numeric-stripped variant.
      *
      * Example:
      * 4zx16 -> zx
      */
     add(
-        username.replace(/[0-9]/g, "")
+        username.replace(
+            /[0-9]/g,
+            ""
+        )
     );
 
     /*
-     * Leetspeak representation.
+     * Leetspeak variant.
      */
     add(
-        generateLeetspeak(username)
+        generateLeetspeak(
+            username
+        )
     );
 
     /*
-     * Common development suffixes.
+     * Common development variants.
      */
     add(`${username}dev`);
     add(`${username}_dev`);
 
     /*
-     * Common alternate-account naming.
+     * Alternate account variants.
      */
     add(`${username}alt`);
     add(`${username}_alt`);
@@ -373,52 +387,57 @@ export function detectAliases(user) {
     add(`_${username}`);
 
     /*
-     * Short numeric variants.
-     *
-     * These are deliberately limited because
-     * arbitrary alias generation creates noise.
+     * Shortened variant.
      */
-    if (username.length > 4) {
+    if (
+        username.length > 4
+    ) {
         add(
-            username.slice(0, -1)
+            username.slice(
+                0,
+                -1
+            )
         );
     }
 
-    for (const alias of aliases) {
-        session.aliases.add(alias);
-    }
-
-    /*
-     * The controller maintains its own aliasCandidates Set.
-     * Because the controller doesn't pass it to this module,
-     * we mirror the results onto window when possible.
-     *
-     * This is only for compatibility with the existing script.
-     */
-    if (
-        window.aliasCandidates instanceof Set
+    for (
+        const alias of aliases
     ) {
-        for (const alias of aliases) {
-            window.aliasCandidates.add(alias);
+        session.aliases.add(
+            alias
+        );
+
+        if (
+            aliasStore instanceof Set
+        ) {
+            aliasStore.add(
+                alias
+            );
         }
     }
 
-    return [...aliases];
+    return [
+        ...aliases
+    ];
 }
 
-
 // ============================================================
-// FINGERPRINTING
+// FINGERPRINT
 // ============================================================
 
-function calculateEntropy(keywords) {
-    const values = Object.values(
-        keywords || {}
-    ).filter(
-        value =>
-            Number.isFinite(value) &&
-            value > 0
-    );
+function calculateEntropy(
+    keywords
+) {
+    const values =
+        Object.values(
+            keywords || {}
+        ).filter(
+            value =>
+                Number.isFinite(
+                    value
+                ) &&
+                value > 0
+        );
 
     if (!values.length) {
         return 0;
@@ -433,13 +452,17 @@ function calculateEntropy(keywords) {
 
     let entropy = 0;
 
-    for (const value of values) {
+    for (
+        const value of values
+    ) {
         const probability =
             value / total;
 
         entropy -=
             probability *
-            Math.log2(probability);
+            Math.log2(
+                probability
+            );
     }
 
     return Number(
@@ -447,8 +470,10 @@ function calculateEntropy(keywords) {
     );
 }
 
-
-function getTopKeywords(keywords, limit = 20) {
+function getTopKeywords(
+    keywords,
+    limit = 20
+) {
     return Object.entries(
         keywords || {}
     )
@@ -456,7 +481,10 @@ function getTopKeywords(keywords, limit = 20) {
             (a, b) =>
                 b[1] - a[1]
         )
-        .slice(0, limit)
+        .slice(
+            0,
+            limit
+        )
         .map(
             ([keyword, count]) => ({
                 keyword,
@@ -465,10 +493,19 @@ function getTopKeywords(keywords, limit = 20) {
         );
 }
 
+export function buildFingerprint(
+    user,
+    keywords,
+    state
+) {
+    const username =
+        String(user ?? "");
 
-export function buildFingerprint(user, keywords) {
-    const username = String(user ?? "");
-    const session = getSession(user);
+    const session =
+        getSession(user);
+
+    session.keywords =
+        keywords;
 
     const fingerprint = {
         username,
@@ -492,7 +529,9 @@ export function buildFingerprint(user, keywords) {
             username.includes("."),
 
         symbols:
-            /[^a-zA-Z0-9._-]/.test(username),
+            /[^a-zA-Z0-9._-]/.test(
+                username
+            ),
 
         keywordCount:
             Object.keys(
@@ -515,74 +554,57 @@ export function buildFingerprint(user, keywords) {
         sourceCount:
             session.sources.size,
 
-        github:
-            {
-                found:
-                    session.github.found,
+        github: {
+            found:
+                session.github.found,
 
-                repositories:
-                    session.github.repositories.length,
+            repositories:
+                session.github.repositories
+                    .length,
 
-                organizations:
-                    session.github.organizations.length
-            },
+            organizations:
+                session.github.organizations
+                    .length
+        },
 
         generatedAt:
             new Date().toISOString()
     };
 
-    session.fingerprints = fingerprint;
+    session.fingerprints =
+        fingerprint;
 
-    /*
-     * Compatibility with a controller that exposes
-     * a global fingerprint object.
-     */
     if (
-        typeof window !== "undefined"
+        state?.fingerprints
     ) {
-        window.fingerprintProfile =
-            fingerprint;
-
-        window.userFingerprints ??= {};
-        window.userFingerprints[user] =
+        state.fingerprints[user] =
             fingerprint;
     }
 
     return fingerprint;
 }
 
-
 // ============================================================
 // FINGERPRINT DISPLAY
 // ============================================================
 
 export function displayFingerprint(
-    container = document.getElementById(
-        "dynamicProfile"
-    )
+    container,
+    user,
+    state
 ) {
     if (!container) {
         return;
     }
 
-    const user =
-        getCurrentUserFromContainer(
-            container
-        );
-
     const session =
-        user
-            ? getSession(user)
-            : null;
+        getSession(user);
 
     const fingerprint =
-        session?.fingerprints ||
-        window.fingerprintProfile ||
+        state?.fingerprints?.[user] ||
+        session.fingerprints ||
         {};
 
-    /*
-     * Don't destroy previously generated sections.
-     */
     const section =
         createSection(
             "Passive Fingerprint"
@@ -642,7 +664,10 @@ export function displayFingerprint(
         ]
     ];
 
-    for (const [label, value] of rows) {
+    for (
+        const [label, value]
+        of rows
+    ) {
         list.appendChild(
             createListItem(
                 label,
@@ -651,11 +676,10 @@ export function displayFingerprint(
         );
     }
 
-    section.appendChild(list);
+    section.appendChild(
+        list
+    );
 
-    /*
-     * Top keywords.
-     */
     if (
         Array.isArray(
             fingerprint.topKeywords
@@ -676,8 +700,8 @@ export function displayFingerprint(
             document.createElement("ul");
 
         for (
-            const item of
-            fingerprint.topKeywords
+            const item
+            of fingerprint.topKeywords
         ) {
             keywordList.appendChild(
                 createListItem(
@@ -692,18 +716,17 @@ export function displayFingerprint(
         );
     }
 
-    /*
-     * GitHub summary.
-     */
-    if (fingerprint.github) {
-        const githubHeading =
+    if (
+        fingerprint.github
+    ) {
+        const heading =
             document.createElement("h4");
 
-        githubHeading.textContent =
+        heading.textContent =
             "GitHub Signal";
 
         section.appendChild(
-            githubHeading
+            heading
         );
 
         const githubList =
@@ -740,23 +763,14 @@ export function displayFingerprint(
     );
 }
 
-
 // ============================================================
-// PERSONA / CONTENT SIGNAL ANALYSIS
-// ============================================================
-//
-// Important:
-//
-// This does NOT pretend that arbitrary keywords can establish
-// someone's psychology. It reports observable content signals.
-//
+// CONTENT SIGNAL ANALYSIS
 // ============================================================
 
 const SIGNALS = {
     technical: [
         "rust",
         "cpp",
-        "c++",
         "python",
         "javascript",
         "typescript",
@@ -829,16 +843,18 @@ const SIGNALS = {
     ]
 };
 
-
 function collectSignalMatches(
     keywords,
     signalWords
 ) {
     const matches = [];
 
-    for (const keyword of Object.keys(
-        keywords || {}
-    )) {
+    for (
+        const keyword
+        of Object.keys(
+            keywords || {}
+        )
+    ) {
         if (
             signalWords.includes(
                 normalize(keyword)
@@ -850,15 +866,14 @@ function collectSignalMatches(
         }
     }
 
-    return unique(matches);
+    return unique(
+        matches
+    );
 }
-
 
 export function inferPersona(
     keywords,
-    container = document.getElementById(
-        "dynamicProfile"
-    )
+    container
 ) {
     const matches = {
         technical:
@@ -892,11 +907,10 @@ export function inferPersona(
             )
     };
 
-    /*
-     * Determine the strongest content domains.
-     */
     const ranked =
-        Object.entries(matches)
+        Object.entries(
+            matches
+        )
             .map(
                 ([category, evidence]) => ({
                     category,
@@ -907,17 +921,27 @@ export function inferPersona(
             )
             .sort(
                 (a, b) =>
-                    b.score - a.score
+                    b.score -
+                    a.score
             );
 
-    const session =
-        findSessionByKeywords(
+    /*
+     * Find the session whose keyword
+     * store is the one being analyzed.
+     */
+    for (
+        const session
+        of sessions.values()
+    ) {
+        if (
+            session.keywords ===
             keywords
-        );
+        ) {
+            session.personaSignals =
+                ranked;
 
-    if (session) {
-        session.personaSignals =
-            ranked;
+            break;
+        }
     }
 
     if (!container) {
@@ -951,9 +975,12 @@ export function inferPersona(
 
     let emitted = 0;
 
-    for (const item of ranked) {
-
-        if (!item.score) {
+    for (
+        const item of ranked
+    ) {
+        if (
+            !item.score
+        ) {
             continue;
         }
 
@@ -970,7 +997,9 @@ export function inferPersona(
         strong.textContent =
             labels[item.category];
 
-        li.appendChild(strong);
+        li.appendChild(
+            strong
+        );
 
         li.appendChild(
             document.createTextNode(
@@ -978,7 +1007,9 @@ export function inferPersona(
             )
         );
 
-        list.appendChild(li);
+        list.appendChild(
+            li
+        );
     }
 
     if (!emitted) {
@@ -988,18 +1019,24 @@ export function inferPersona(
         li.textContent =
             "No strong content-domain signal detected.";
 
-        list.appendChild(li);
+        list.appendChild(
+            li
+        );
     }
 
-    section.appendChild(list);
+    section.appendChild(
+        list
+    );
 
     const note =
         document.createElement("p");
 
     note.textContent =
-        "Signals are derived from observable text and should not be treated as definitive personality or psychological classifications.";
+        "Signals are derived from observable text and should not be treated as definitive psychological classifications.";
 
-    section.appendChild(note);
+    section.appendChild(
+        note
+    );
 
     container.appendChild(
         section
@@ -1008,9 +1045,8 @@ export function inferPersona(
     return ranked;
 }
 
-
 // ============================================================
-// GITHUB API
+// GITHUB REQUESTS
 // ============================================================
 
 async function githubRequest(
@@ -1047,6 +1083,14 @@ async function githubRequest(
             );
 
         if (
+            response.status === 404
+        ) {
+            throw new Error(
+                "GitHub account not found."
+            );
+        }
+
+        if (
             response.status === 403
         ) {
             const remaining =
@@ -1054,7 +1098,9 @@ async function githubRequest(
                     "x-ratelimit-remaining"
                 );
 
-            if (remaining === "0") {
+            if (
+                remaining === "0"
+            ) {
                 throw new Error(
                     "GitHub API rate limit exhausted."
                 );
@@ -1072,10 +1118,11 @@ async function githubRequest(
         return await response.json();
 
     } finally {
-        clearTimeout(timeout);
+        clearTimeout(
+            timeout
+        );
     }
 }
-
 
 async function githubPages(
     path
@@ -1084,7 +1131,8 @@ async function githubPages(
 
     for (
         let page = 1;
-        page <= CONFIG.githubMaxPages;
+        page <=
+            CONFIG.githubMaxPages;
         page++
     ) {
         const separator =
@@ -1118,13 +1166,13 @@ async function githubPages(
     return results;
 }
 
-
 // ============================================================
 // GITHUB ANALYSIS
 // ============================================================
 
 export async function fetchGitHubKeywords(
-    user
+    user,
+    keywordStore
 ) {
     const username =
         normalize(user);
@@ -1133,9 +1181,12 @@ export async function fetchGitHubKeywords(
         getSession(user);
 
     const keywords =
-        getControllerKeywordStore(
-            user
-        );
+        keywordStore ||
+        session.keywords ||
+        {};
+
+    session.keywords =
+        keywords;
 
     if (!username) {
         return keywords;
@@ -1143,7 +1194,7 @@ export async function fetchGitHubKeywords(
 
     try {
         /*
-         * GitHub profile.
+         * Profile.
          */
         const profile =
             await githubRequest(
@@ -1201,15 +1252,17 @@ export async function fetchGitHubKeywords(
         session.github.repositories =
             repositories;
 
-        if (repositories.length) {
+        if (
+            repositories.length
+        ) {
             session.sources.add(
                 "GitHub repositories"
             );
         }
 
         for (
-            const repository of
-            repositories
+            const repository
+            of repositories
         ) {
             extractKeywords(
                 repository.name,
@@ -1235,7 +1288,9 @@ export async function fetchGitHubKeywords(
                 )
             ) {
                 extractKeywords(
-                    repository.topics.join(" "),
+                    repository.topics.join(
+                        " "
+                    ),
                     username,
                     keywords
                 );
@@ -1253,15 +1308,17 @@ export async function fetchGitHubKeywords(
         session.github.organizations =
             organizations;
 
-        if (organizations.length) {
+        if (
+            organizations.length
+        ) {
             session.sources.add(
                 "GitHub organizations"
             );
         }
 
         for (
-            const organization of
-            organizations
+            const organization
+            of organizations
         ) {
             extractKeywords(
                 organization.login,
@@ -1279,20 +1336,15 @@ export async function fetchGitHubKeywords(
         return keywords;
 
     } catch (error) {
-
-        /*
-         * A 404 simply means there isn't a
-         * matching public GitHub account.
-         */
         if (
-            String(error.message)
-                .includes("HTTP 404")
+            error.message ===
+            "GitHub account not found."
         ) {
             session.github.found =
                 false;
 
             session.github.error =
-                "GitHub account not found.";
+                error.message;
 
             return keywords;
         }
@@ -1314,12 +1366,14 @@ export async function fetchGitHubKeywords(
     }
 }
 
-
 // ============================================================
-// GRAPH
+// GRAPH CONSTRUCTION
 // ============================================================
 
-export function buildGraph(user) {
+export function buildGraph(
+    user,
+    state
+) {
     const username =
         String(user);
 
@@ -1334,7 +1388,6 @@ export function buildGraph(user) {
 
     const linkIds =
         new Set();
-
 
     function addNode(
         id,
@@ -1371,7 +1424,6 @@ export function buildGraph(user) {
         return true;
     }
 
-
     function addLink(
         source,
         target,
@@ -1402,9 +1454,8 @@ export function buildGraph(user) {
         linkIds.add(key);
     }
 
-
     /*
-     * Primary node.
+     * Primary identity.
      */
     addNode(
         username,
@@ -1415,13 +1466,16 @@ export function buildGraph(user) {
         }
     );
 
-
     /*
-     * Alias nodes.
+     * Aliases.
      */
+    const aliases =
+        state?.aliasCandidates ||
+        session.aliases;
+
     for (
-        const alias of
-        session.aliases
+        const alias
+        of aliases
     ) {
         if (
             alias === username
@@ -1446,13 +1500,8 @@ export function buildGraph(user) {
         }
     }
 
-
     /*
-     * GitHub node.
-     *
-     * This represents the public source,
-     * not proof that every GitHub artifact
-     * belongs to the searched person.
+     * GitHub source.
      */
     if (
         session.github.found
@@ -1475,20 +1524,16 @@ export function buildGraph(user) {
             "source"
         );
 
-
         /*
          * Repository nodes.
-         *
-         * Keep this bounded so a large GitHub
-         * account doesn't turn the graph into
-         * an unusable hairball.
          */
         for (
-            const repository of
-            session.github.repositories.slice(
-                0,
-                100
-            )
+            const repository
+            of session.github.repositories
+                .slice(
+                    0,
+                    CONFIG.maxRepositoriesInGraph
+                )
         ) {
             const repoId =
                 `repo:${repository.full_name}`;
@@ -1498,7 +1543,9 @@ export function buildGraph(user) {
                     repoId,
                     4,
                     {
-                        type: "repository",
+                        type:
+                            "repository",
+
                         label:
                             repository.name
                     }
@@ -1513,34 +1560,22 @@ export function buildGraph(user) {
         }
     }
 
-
-    /*
-     * Copy into the controller's globals.
-     *
-     * Your current script uses:
-     *
-     * state.graphNodes
-     * state.graphLinks
-     *
-     * but does not pass those objects into OIST.js.
-     *
-     * Mirroring them here preserves compatibility.
-     */
-    if (
-        typeof window !== "undefined"
-    ) {
-        window.graphNodes =
-            nodes;
-
-        window.graphLinks =
-            links;
-    }
-
     session.graphNodes =
         nodes;
 
     session.graphLinks =
         links;
+
+    /*
+     * Synchronize the actual controller state.
+     */
+    if (state) {
+        state.graphNodes =
+            nodes;
+
+        state.graphLinks =
+            links;
+    }
 
     return {
         nodes,
@@ -1548,28 +1583,27 @@ export function buildGraph(user) {
     };
 }
 
-
 // ============================================================
 // GRAPH RENDERING
 // ============================================================
 
-export function renderGraph() {
-
-    const container =
-        document.getElementById(
-            "dynamicProfile"
-        );
-
+export function renderGraph(
+    container,
+    state
+) {
     if (!container) {
         return null;
     }
 
+    /*
+     * D3 must be loaded by the HTML page.
+     */
     if (
-        typeof window.d3 ===
-        "undefined"
+        typeof window === "undefined" ||
+        typeof window.d3 === "undefined"
     ) {
         console.warn(
-            "[OIST] D3 is not available; graph rendering skipped."
+            "[OIST] D3 is not loaded; graph rendering skipped."
         );
 
         const warning =
@@ -1590,44 +1624,39 @@ export function renderGraph() {
         return null;
     }
 
+    const d3 =
+        window.d3;
 
-    /*
-     * Prefer the current controller-compatible globals.
-     */
     const nodes =
         Array.isArray(
-            window.graphNodes
+            state?.graphNodes
         )
-            ? window.graphNodes
+            ? state.graphNodes
             : [];
-
 
     const links =
         Array.isArray(
-            window.graphLinks
+            state?.graphLinks
         )
-            ? window.graphLinks
+            ? state.graphLinks
             : [];
-
 
     if (!nodes.length) {
         return null;
     }
 
-
     /*
-     * Remove an existing OIST graph if the
-     * function is accidentally called twice.
+     * Remove an existing graph if rendering
+     * happens more than once.
      */
-    const oldGraph =
-        container.querySelector(
+    container
+        .querySelectorAll(
             "[data-oist-graph]"
+        )
+        .forEach(
+            element =>
+                element.remove()
         );
-
-    if (oldGraph) {
-        oldGraph.remove();
-    }
-
 
     const section =
         createSection(
@@ -1636,7 +1665,6 @@ export function renderGraph() {
 
     section.dataset.oistGraph =
         "true";
-
 
     const width =
         Math.max(
@@ -1650,7 +1678,6 @@ export function renderGraph() {
 
     const height =
         450;
-
 
     const svg =
         d3
@@ -1677,10 +1704,14 @@ export function renderGraph() {
                 "Identity relationship graph"
             );
 
-
     /*
-     * Simulation.
+     * Copy links before D3 mutates them.
      */
+    const simulationLinks =
+        links.map(link => ({
+            ...link
+        }));
+
     const simulation =
         d3
             .forceSimulation(
@@ -1690,7 +1721,7 @@ export function renderGraph() {
                 "link",
                 d3
                     .forceLink(
-                        links
+                        simulationLinks
                     )
                     .id(
                         node =>
@@ -1698,21 +1729,18 @@ export function renderGraph() {
                     )
                     .distance(
                         link => {
-                            if (
-                                link.type ===
-                                "alias"
+                            switch (
+                                link.type
                             ) {
-                                return 90;
-                            }
+                                case "alias":
+                                    return 90;
 
-                            if (
-                                link.type ===
-                                "repository"
-                            ) {
-                                return 120;
-                            }
+                                case "repository":
+                                    return 120;
 
-                            return 100;
+                                default:
+                                    return 100;
+                            }
                         }
                     )
             )
@@ -1736,7 +1764,6 @@ export function renderGraph() {
                     .radius(25)
             );
 
-
     /*
      * Links.
      */
@@ -1749,14 +1776,14 @@ export function renderGraph() {
             )
             .selectAll("line")
             .data(
-                links
+                simulationLinks
             )
             .join("line")
             .attr(
                 "stroke",
-                link => {
+                item => {
                     switch (
-                        link.type
+                        item.type
                     ) {
                         case "alias":
                             return "#f778ba";
@@ -1781,7 +1808,6 @@ export function renderGraph() {
                 0.75
             );
 
-
     /*
      * Nodes.
      */
@@ -1799,23 +1825,22 @@ export function renderGraph() {
             .join("circle")
             .attr(
                 "r",
-                node =>
-                    node.primary
+                item =>
+                    item.primary
                         ? 9
                         : 6
             )
             .attr(
                 "fill",
-                node => {
-
+                item => {
                     if (
-                        node.primary
+                        item.primary
                     ) {
                         return "#58a6ff";
                     }
 
                     switch (
-                        node.type
+                        item.type
                     ) {
                         case "alias":
                             return "#f778ba";
@@ -1840,7 +1865,6 @@ export function renderGraph() {
                 1.5
             );
 
-
     /*
      * Labels.
      */
@@ -1857,21 +1881,21 @@ export function renderGraph() {
             )
             .join("text")
             .text(
-                node =>
-                    node.label ||
-                    node.id
+                item =>
+                    item.label ||
+                    item.id
             )
             .attr(
                 "font-size",
-                node =>
-                    node.primary
+                item =>
+                    item.primary
                         ? "12px"
                         : "10px"
             )
             .attr(
                 "font-weight",
-                node =>
-                    node.primary
+                item =>
+                    item.primary
                         ? "700"
                         : "400"
             )
@@ -1884,6 +1908,42 @@ export function renderGraph() {
                 "none"
             );
 
+    /*
+     * Native tooltip.
+     */
+    node.append("title")
+        .text(
+            item => {
+                if (
+                    item.primary
+                ) {
+                    return `${item.id} — primary identity`;
+                }
+
+                if (
+                    item.type ===
+                    "alias"
+                ) {
+                    return `${item.id} — alias candidate`;
+                }
+
+                if (
+                    item.type ===
+                    "source"
+                ) {
+                    return `${item.label || item.id} — public source`;
+                }
+
+                if (
+                    item.type ===
+                    "repository"
+                ) {
+                    return `${item.label || item.id} — repository`;
+                }
+
+                return item.id;
+            }
+        );
 
     /*
      * Drag support.
@@ -1893,8 +1953,7 @@ export function renderGraph() {
             .drag()
             .on(
                 "start",
-                (event, d) => {
-
+                (event, item) => {
                     if (
                         !event.active
                     ) {
@@ -1905,24 +1964,26 @@ export function renderGraph() {
                             .restart();
                     }
 
-                    d.fx = d.x;
-                    d.fy = d.y;
+                    item.fx =
+                        item.x;
+
+                    item.fy =
+                        item.y;
                 }
             )
             .on(
                 "drag",
-                (event, d) => {
-                    d.fx =
+                (event, item) => {
+                    item.fx =
                         event.x;
 
-                    d.fy =
+                    item.fy =
                         event.y;
                 }
             )
             .on(
                 "end",
-                (event, d) => {
-
+                (event, item) => {
                     if (
                         !event.active
                     ) {
@@ -1932,222 +1993,85 @@ export function renderGraph() {
                             );
                     }
 
-                    d.fx = null;
-                    d.fy = null;
+                    item.fx = null;
+                    item.fy = null;
                 }
             )
     );
 
-
     /*
-     * Tooltip-like native browser title.
-     */
-    node.append("title")
-        .text(
-            node => {
-                if (
-                    node.primary
-                ) {
-                    return `${node.id} — primary identity`;
-                }
-
-                if (
-                    node.type ===
-                    "alias"
-                ) {
-                    return `${node.id} — alias candidate`;
-                }
-
-                if (
-                    node.type ===
-                    "source"
-                ) {
-                    return `${node.label || node.id} — public source`;
-                }
-
-                if (
-                    node.type ===
-                    "repository"
-                ) {
-                    return `${node.label || node.id} — repository`;
-                }
-
-                return node.id;
-            }
-        );
-
-
-    /*
-     * Simulation tick.
+     * Tick.
      */
     simulation.on(
         "tick",
         () => {
-
             link
                 .attr(
                     "x1",
-                    d => d.source.x
+                    item =>
+                        item.source.x
                 )
                 .attr(
                     "y1",
-                    d => d.source.y
+                    item =>
+                        item.source.y
                 )
                 .attr(
                     "x2",
-                    d => d.target.x
+                    item =>
+                        item.target.x
                 )
                 .attr(
                     "y2",
-                    d => d.target.y
+                    item =>
+                        item.target.y
                 );
 
             node
                 .attr(
                     "cx",
-                    d => d.x
+                    item =>
+                        item.x
                 )
                 .attr(
                     "cy",
-                    d => d.y
+                    item =>
+                        item.y
                 );
 
             label
                 .attr(
                     "x",
-                    d => d.x + 9
+                    item =>
+                        item.x + 9
                 )
                 .attr(
                     "y",
-                    d => d.y + 4
+                    item =>
+                        item.y + 4
                 );
         }
     );
-
 
     container.appendChild(
         section
     );
 
-
     return {
         svg,
         simulation,
         nodes,
-        links
+        links: simulationLinks
     };
 }
 
-
 // ============================================================
-// CONTROLLER COMPATIBILITY HELPERS
+// DEBUG / API
 // ============================================================
 
-function getControllerKeywordStore(
+export function getAnalysis(
     user
 ) {
-    /*
-     * Your script currently creates:
-     *
-     * state.keywordCache = {};
-     *
-     * and then:
-     *
-     * const keywords =
-     *     state.keywordCache[user] ??= {};
-     *
-     * OIST.js does not receive `state`, so the
-     * easiest compatibility bridge is to use
-     * the same global object when available.
-     *
-     * If it isn't exposed, the module falls back
-     * to its own session-local keyword store.
-     */
-
-    if (
-        window.__OISTKeywordCache &&
-        typeof window.__OISTKeywordCache ===
-            "object"
-    ) {
-        return (
-            window.__OISTKeywordCache[user] ||=
-                {}
-        );
-    }
-
-    const session =
-        getSession(user);
-
-    session.keywords ||=
-        {};
-
-    return session.keywords;
-}
-
-
-function findSessionByKeywords(
-    keywords
-) {
-    for (const session of sessions.values()) {
-        if (
-            session.keywords ===
-            keywords
-        ) {
-            return session;
-        }
-    }
-
-    return null;
-}
-
-
-function getCurrentUserFromContainer(
-    container
-) {
-    /*
-     * Search for the heading generated by
-     * the controller:
-     *
-     * Search Results for: USER
-     */
-    const heading =
-        container.closest(
-            "#result"
-        )?.querySelector(
-            "h2"
-        );
-
-    if (!heading) {
-        /*
-         * Fall back to the only active session.
-         */
-        if (
-            sessions.size === 1
-        ) {
-            return [
-                ...sessions.keys()
-            ][0];
-        }
-
-        return null;
-    }
-
-    const match =
-        heading.textContent.match(
-            /Search Results for:\s*(.+)$/i
-        );
-
-    return match
-        ? normalize(match[1])
-        : null;
-}
-
-
-// ============================================================
-// OPTIONAL DEBUG API
-// ============================================================
-
-export function getAnalysis(user) {
     const session =
         getSession(user);
 
@@ -2184,8 +2108,9 @@ export function getAnalysis(user) {
     };
 }
 
-
-export function clearAnalysis(user) {
+export function clearAnalysis(
+    user
+) {
     if (user) {
         sessions.delete(
             normalize(user)
