@@ -1,52 +1,104 @@
 // OIST.js
 // Unified OSINT Analysis Module
-// ------------------------------------------------------------
-// Design goals:
-//   - No global mutable analysis state
-//   - Safe DOM rendering
-//   - Deterministic keyword extraction
-//   - Bounded GitHub collection
-//   - Pagination support
-//   - AbortController support
-//   - GitHub rate-limit awareness
-//   - Deduplicated graph construction
-//   - Evidence-oriented inference instead of pretending
-//     weak signals are facts
-// ------------------------------------------------------------
+// Compatible with the current whois/script.js controller.
+//
+// Expected controller API:
+//
+//   extractKeywords(text, user, store)
+//   fetchGitHubKeywords(user)
+//   detectAliases(user)
+//   buildFingerprint(user, keywords)
+//   inferPersona(keywords, container)
+//   displayFingerprint(container)
+//   buildGraph(user)
+//   renderGraph()
+//
+// The controller intentionally owns:
+//   state.keywordCache
+//   state.fingerprints
+//   state.confidence
+//   state.aliasCandidates
+//   state.graphNodes
+//   state.graphLinks
+//
+// This module maintains its own internal per-user analysis cache so
+// it does not require modifications to the controller.
 
 "use strict";
 
 
 // ============================================================
-// CONFIGURATION
+// INTERNAL STATE
+// ============================================================
+
+const sessions = new Map();
+
+function getSession(user) {
+    const key = normalize(user);
+
+    if (!sessions.has(key)) {
+        sessions.set(key, {
+            username: key,
+
+            aliases: new Set(),
+
+            sources: new Set(),
+
+            fingerprints: {},
+
+            confidence: {},
+
+            graphNodes: [],
+            graphLinks: [],
+
+            github: {
+                found: false,
+                profile: null,
+                repositories: [],
+                organizations: [],
+                error: null
+            },
+
+            personaSignals: [],
+
+            warnings: []
+        });
+    }
+
+    return sessions.get(key);
+}
+
+
+// ============================================================
+// CONSTANTS
 // ============================================================
 
 const CONFIG = Object.freeze({
-  githubApi: "https://api.github.com",
+    githubApi: "https://api.github.com",
 
-  githubTimeout: 10_000,
-  githubMaxPages: 5,
-  githubPerPage: 100,
+    githubPerPage: 100,
+    githubMaxPages: 5,
 
-  /*
-   * Prevent enormous profiles from consuming excessive memory.
-   */
-  maxKeywords: 2_000,
-  maxKeywordTextLength: 50_000,
+    maxKeywordLength: 64,
+    maxKeywords: 2500,
 
-  maxAliases: 100,
-  maxGraphNodes: 500,
-  maxGraphLinks: 1_000,
+    maxAliases: 100,
 
-  /*
-   * Very short/common words produce terrible OSINT signals.
-   */
-  minimumKeywordLength: 4,
+    maxGraphNodes: 500,
+    maxGraphLinks: 1000,
 
-  /*
-   * Generic words which are usually useless for fingerprinting.
-   */
-  keywordBlacklist: new Set([
+    requestTimeout: 10000
+});
+
+
+const BLACKLIST = new Set([
+    "http",
+    "https",
+    "www",
+    "com",
+    "org",
+    "net",
+
     "about",
     "after",
     "again",
@@ -55,7 +107,6 @@ const CONFIG = Object.freeze({
     "being",
     "could",
     "from",
-    "github",
     "have",
     "into",
     "more",
@@ -74,128 +125,74 @@ const CONFIG = Object.freeze({
     "with",
     "would",
 
-    "http",
-    "https",
-    "www",
-    "com",
-    "org",
-    "net"
-  ])
-});
+    "github",
+    "repository",
+    "repositories",
+    "profile",
+    "project",
+    "projects"
+]);
 
 
 // ============================================================
-// INTERNAL UTILITIES
+// GENERAL UTILITIES
 // ============================================================
 
 function normalize(value) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase();
+    return String(value ?? "")
+        .trim()
+        .toLowerCase();
 }
 
 
-function normalizeUsername(user) {
-  return normalize(user);
+function escapeHTML(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 
-function throwIfAborted(signal) {
-  if (signal?.aborted) {
-    const error = new Error("Operation aborted.");
-    error.name = "AbortError";
-    throw error;
-  }
+function unique(array) {
+    return [...new Set(array)];
 }
 
 
-function withTimeout(promise, timeout, signal) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
+function addWarning(user, message) {
+    const session = getSession(user);
 
-    const timer = setTimeout(() => {
-      if (settled) return;
+    if (!session.warnings.includes(message)) {
+        session.warnings.push(message);
+    }
+}
 
-      settled = true;
-      reject(
-        new Error(`Operation timed out after ${timeout}ms.`)
-      );
-    }, timeout);
 
-    const abortHandler = () => {
-      if (settled) return;
+function createSection(title) {
+    const section = document.createElement("section");
 
-      settled = true;
-      clearTimeout(timer);
+    const heading = document.createElement("h3");
+    heading.textContent = title;
 
-      const error = new Error("Operation aborted.");
-      error.name = "AbortError";
+    section.appendChild(heading);
 
-      reject(error);
-    };
+    return section;
+}
 
-    signal?.addEventListener(
-      "abort",
-      abortHandler,
-      { once: true }
+
+function createListItem(label, value) {
+    const li = document.createElement("li");
+
+    const strong = document.createElement("strong");
+    strong.textContent = `${label}: `;
+
+    li.appendChild(strong);
+    li.appendChild(
+        document.createTextNode(String(value))
     );
 
-    promise.then(
-      value => {
-        if (settled) return;
-
-        settled = true;
-        clearTimeout(timer);
-
-        signal?.removeEventListener(
-          "abort",
-          abortHandler
-        );
-
-        resolve(value);
-      },
-
-      error => {
-        if (settled) return;
-
-        settled = true;
-        clearTimeout(timer);
-
-        signal?.removeEventListener(
-          "abort",
-          abortHandler
-        );
-
-        reject(error);
-      }
-    );
-  });
-}
-
-
-function safeCreateElement(tag, text = "") {
-  const element = document.createElement(tag);
-
-  if (text !== undefined) {
-    element.textContent = String(text);
-  }
-
-  return element;
-}
-
-
-function ensureKeywordStore(store) {
-  if (
-    !store ||
-    typeof store !== "object" ||
-    Array.isArray(store)
-  ) {
-    throw new TypeError(
-      "Keyword store must be an object."
-    );
-  }
-
-  return store;
+    return li;
 }
 
 
@@ -203,84 +200,93 @@ function ensureKeywordStore(store) {
 // KEYWORD EXTRACTION
 // ============================================================
 
-const TOKEN_REGEX = /[a-zA-Z0-9][a-zA-Z0-9._+-]*/g;
+export function extractKeywords(text, user, store) {
+    if (!text || !store) {
+        return store;
+    }
 
+    const username = normalize(user);
 
-export function extractKeywords(
-  text,
-  user,
-  store
-) {
-  ensureKeywordStore(store);
+    let source = String(text);
 
-  if (!text) {
+    /*
+     * Don't allow an enormous document to create an
+     * unbounded keyword store.
+     */
+    source = source.slice(0, 100000);
+
+    /*
+     * Normalize URLs before tokenization.
+     */
+    source = source
+        .replace(
+            /https?:\/\/[^\s]+/gi,
+            " "
+        )
+        .replace(
+            /www\.[^\s]+/gi,
+            " "
+        );
+
+    const tokens = source
+        .toLowerCase()
+        .match(/[a-z0-9][a-z0-9._+-]*/g) || [];
+
+    for (let token of tokens) {
+        token = token
+            .replace(/^[._+-]+/, "")
+            .replace(/[._+-]+$/, "");
+
+        if (
+            token.length < 4 ||
+            token.length > CONFIG.maxKeywordLength
+        ) {
+            continue;
+        }
+
+        if (
+            token === username ||
+            BLACKLIST.has(token)
+        ) {
+            continue;
+        }
+
+        /*
+         * Ignore obvious HTML/CSS fragments.
+         */
+        if (
+            token.startsWith("class") ||
+            token.startsWith("style") ||
+            token.startsWith("href")
+        ) {
+            continue;
+        }
+
+        /*
+         * Don't allow the keyword dictionary to grow
+         * without bounds.
+         */
+        if (
+            !Object.prototype.hasOwnProperty.call(
+                store,
+                token
+            ) &&
+            Object.keys(store).length >= CONFIG.maxKeywords
+        ) {
+            break;
+        }
+
+        store[token] =
+            (store[token] || 0) + 1;
+    }
+
+    /*
+     * Synchronize the internal session.
+     */
+    const session = getSession(user);
+    session.sources.add("Local profile");
+
     return store;
-  }
-
-  const username =
-    normalizeUsername(user);
-
-  /*
-   * Prevent pathological input sizes.
-   */
-  const source =
-    String(text)
-      .slice(0, CONFIG.maxKeywordTextLength)
-      .toLowerCase();
-
-  const tokens =
-    source.match(TOKEN_REGEX) || [];
-
-  for (const rawToken of tokens) {
-
-    const token =
-      rawToken
-        .replace(/^[._+-]+|[._+-]+$/g, "");
-
-    if (
-      token.length <
-      CONFIG.minimumKeywordLength
-    ) {
-      continue;
-    }
-
-    if (
-      token === username ||
-      token.includes("http") ||
-      CONFIG.keywordBlacklist.has(token)
-    ) {
-      continue;
-    }
-
-    /*
-     * Ignore obvious URL fragments.
-     */
-    if (
-      token.startsWith("www.") ||
-      token.includes("://")
-    ) {
-      continue;
-    }
-
-    /*
-     * Bound the store.
-     */
-    if (
-      !Object.prototype.hasOwnProperty.call(
-        store,
-        token
-      ) &&
-      Object.keys(store).length >=
-        CONFIG.maxKeywords
-    ) {
-      break;
-    }
-
-    store[token] =
-      (store[token] || 0) + 1;
-  }
-
-  return store;
 }
 
 
@@ -288,91 +294,116 @@ export function extractKeywords(
 // ALIAS DETECTION
 // ============================================================
 
-function leetspeak(value) {
-  return value.replace(
-    /[aeios]/g,
-    character => ({
-      a: "4",
-      e: "3",
-      i: "1",
-      o: "0",
-      s: "5"
-    }[character] ?? character)
-  );
+function generateLeetspeak(value) {
+    return value.replace(
+        /[aeios]/g,
+        character => {
+            const map = {
+                a: "4",
+                e: "3",
+                i: "1",
+                o: "0",
+                s: "5"
+            };
+
+            return map[character] || character;
+        }
+    );
 }
 
 
-export function detectAliases(
-  user,
-  aliasStore = null
-) {
-  const base =
-    normalizeUsername(user);
+export function detectAliases(user) {
+    const username = normalize(user);
+    const session = getSession(user);
 
-  if (!base) {
-    return [];
-  }
-
-  const aliases = new Set();
-
-  const add = alias => {
-    if (
-      alias &&
-      aliases.size < CONFIG.maxAliases
-    ) {
-      aliases.add(alias);
+    if (!username) {
+        return [];
     }
-  };
 
-  add(base);
+    const aliases = new Set();
 
-  /*
-   * Numeric-stripped form.
-   */
-  add(
-    base.replace(/[0-9]/g, "")
-  );
+    const add = alias => {
+        alias = normalize(alias);
 
-  /*
-   * Common leetspeak representation.
-   */
-  add(leetspeak(base));
+        if (
+            alias &&
+            aliases.size < CONFIG.maxAliases
+        ) {
+            aliases.add(alias);
+        }
+    };
 
-  /*
-   * Common developer suffixes.
-   */
-  add(`${base}dev`);
-  add(`${base}_dev`);
-  add(`${base}developer`);
+    /*
+     * Original username.
+     */
+    add(username);
 
-  /*
-   * Common alternate-account patterns.
-   */
-  add(`${base}alt`);
-  add(`${base}_alt`);
+    /*
+     * Numeric-stripped version.
+     *
+     * Example:
+     * 4zx16 -> zx
+     */
+    add(
+        username.replace(/[0-9]/g, "")
+    );
 
-  /*
-   * Legacy underscore form.
-   */
-  add(`_${base}`);
+    /*
+     * Leetspeak representation.
+     */
+    add(
+        generateLeetspeak(username)
+    );
 
-  /*
-   * Keep compatibility with an externally supplied Set.
-   */
-  if (aliasStore instanceof Set) {
+    /*
+     * Common development suffixes.
+     */
+    add(`${username}dev`);
+    add(`${username}_dev`);
+
+    /*
+     * Common alternate-account naming.
+     */
+    add(`${username}alt`);
+    add(`${username}_alt`);
+
+    /*
+     * Underscore-prefixed variant.
+     */
+    add(`_${username}`);
+
+    /*
+     * Short numeric variants.
+     *
+     * These are deliberately limited because
+     * arbitrary alias generation creates noise.
+     */
+    if (username.length > 4) {
+        add(
+            username.slice(0, -1)
+        );
+    }
+
     for (const alias of aliases) {
-      if (
-        aliasStore.size >=
-        CONFIG.maxAliases
-      ) {
-        break;
-      }
-
-      aliasStore.add(alias);
+        session.aliases.add(alias);
     }
-  }
 
-  return [...aliases];
+    /*
+     * The controller maintains its own aliasCandidates Set.
+     * Because the controller doesn't pass it to this module,
+     * we mirror the results onto window when possible.
+     *
+     * This is only for compatibility with the existing script.
+     */
+    if (
+        window.aliasCandidates instanceof Set
+    ) {
+        for (const alias of aliases) {
+            window.aliasCandidates.add(alias);
+        }
+    }
+
+    return [...aliases];
 }
 
 
@@ -380,407 +411,601 @@ export function detectAliases(
 // FINGERPRINTING
 // ============================================================
 
-export function buildFingerprint(
-  user,
-  keywords = {},
-  context = {}
-) {
-  const username =
-    String(user ?? "");
+function calculateEntropy(keywords) {
+    const values = Object.values(
+        keywords || {}
+    ).filter(
+        value =>
+            Number.isFinite(value) &&
+            value > 0
+    );
 
-  const keywordEntries =
-    Object.entries(keywords || {});
+    if (!values.length) {
+        return 0;
+    }
 
-  const sortedKeywords =
-    keywordEntries
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 25)
-      .map(([keyword, count]) => ({
-        keyword,
-        count
-      }));
+    const total =
+        values.reduce(
+            (sum, value) =>
+                sum + value,
+            0
+        );
 
-  const fingerprint = {
-    usernameLength: username.length,
+    let entropy = 0;
 
-    hasDigits: /\d/.test(username),
+    for (const value of values) {
+        const probability =
+            value / total;
 
-    hasUnderscore:
-      username.includes("_"),
+        entropy -=
+            probability *
+            Math.log2(probability);
+    }
 
-    hasHyphen:
-      username.includes("-"),
-
-    hasDot:
-      username.includes("."),
-
-    hasUppercase:
-      /[A-Z]/.test(username),
-
-    hasSymbols:
-      /[^a-zA-Z0-9._-]/.test(username),
-
-    keywordCount:
-      keywordEntries.length,
-
-    keywordEntropy:
-      calculateKeywordEntropy(
-        keywords
-      ),
-
-    topKeywords:
-      sortedKeywords,
-
-    sourceCount:
-      Array.isArray(context.sources)
-        ? context.sources.length
-        : 0,
-
-    generatedAt:
-      new Date().toISOString()
-  };
-
-  /*
-   * Store this in the session context rather than window.
-   */
-  context.fingerprint =
-    fingerprint;
-
-  return fingerprint;
+    return Number(
+        entropy.toFixed(3)
+    );
 }
 
 
-function calculateKeywordEntropy(
-  keywords
-) {
-  const values =
-    Object.values(keywords || {})
-      .filter(
-        value =>
-          Number.isFinite(value) &&
-          value > 0
-      );
+function getTopKeywords(keywords, limit = 20) {
+    return Object.entries(
+        keywords || {}
+    )
+        .sort(
+            (a, b) =>
+                b[1] - a[1]
+        )
+        .slice(0, limit)
+        .map(
+            ([keyword, count]) => ({
+                keyword,
+                count
+            })
+        );
+}
 
-  if (!values.length) {
-    return 0;
-  }
 
-  const total =
-    values.reduce(
-      (sum, value) => sum + value,
-      0
-    );
+export function buildFingerprint(user, keywords) {
+    const username = String(user ?? "");
+    const session = getSession(user);
 
-  let entropy = 0;
+    const fingerprint = {
+        username,
 
-  for (const value of values) {
-    const probability =
-      value / total;
+        usernameLength:
+            username.length,
 
-    entropy -=
-      probability *
-      Math.log2(probability);
-  }
+        digits:
+            /\d/.test(username),
 
-  return Number(
-    entropy.toFixed(3)
-  );
+        uppercase:
+            /[A-Z]/.test(username),
+
+        underscore:
+            username.includes("_"),
+
+        hyphen:
+            username.includes("-"),
+
+        dot:
+            username.includes("."),
+
+        symbols:
+            /[^a-zA-Z0-9._-]/.test(username),
+
+        keywordCount:
+            Object.keys(
+                keywords || {}
+            ).length,
+
+        keywordEntropy:
+            calculateEntropy(
+                keywords
+            ),
+
+        topKeywords:
+            getTopKeywords(
+                keywords
+            ),
+
+        aliasCount:
+            session.aliases.size,
+
+        sourceCount:
+            session.sources.size,
+
+        github:
+            {
+                found:
+                    session.github.found,
+
+                repositories:
+                    session.github.repositories.length,
+
+                organizations:
+                    session.github.organizations.length
+            },
+
+        generatedAt:
+            new Date().toISOString()
+    };
+
+    session.fingerprints = fingerprint;
+
+    /*
+     * Compatibility with a controller that exposes
+     * a global fingerprint object.
+     */
+    if (
+        typeof window !== "undefined"
+    ) {
+        window.fingerprintProfile =
+            fingerprint;
+
+        window.userFingerprints ??= {};
+        window.userFingerprints[user] =
+            fingerprint;
+    }
+
+    return fingerprint;
 }
 
 
 // ============================================================
-// FINGERPRINT RENDERING
+// FINGERPRINT DISPLAY
 // ============================================================
 
 export function displayFingerprint(
-  container,
-  fingerprint = null
+    container = document.getElementById(
+        "dynamicProfile"
+    )
 ) {
-  if (!container) {
-    return;
-  }
-
-  const data =
-    fingerprint ||
-    container.__oistFingerprint ||
-    {};
-
-  const section =
-    safeCreateElement("section");
-
-  const heading =
-    safeCreateElement(
-      "h3",
-      "Passive Fingerprint"
-    );
-
-  section.appendChild(heading);
-
-  const list =
-    safeCreateElement("ul");
-
-  const entries = [
-    [
-      "Username length",
-      data.usernameLength
-    ],
-    [
-      "Contains digits",
-      data.hasDigits
-    ],
-    [
-      "Contains underscore",
-      data.hasUnderscore
-    ],
-    [
-      "Contains hyphen",
-      data.hasHyphen
-    ],
-    [
-      "Contains dot",
-      data.hasDot
-    ],
-    [
-      "Contains uppercase",
-      data.hasUppercase
-    ],
-    [
-      "Keyword count",
-      data.keywordCount
-    ],
-    [
-      "Keyword entropy",
-      data.keywordEntropy
-    ],
-    [
-      "Sources",
-      data.sourceCount
-    ]
-  ];
-
-  for (const [label, value] of entries) {
-    const item =
-      safeCreateElement("li");
-
-    item.append(
-      safeCreateElement(
-        "strong",
-        `${label}: `
-      ),
-      safeCreateElement(
-        "span",
-        String(value)
-      )
-    );
-
-    list.appendChild(item);
-  }
-
-  section.appendChild(list);
-
-  if (Array.isArray(data.topKeywords)) {
-
-    const keywordHeading =
-      safeCreateElement(
-        "h4",
-        "Top Keywords"
-      );
-
-    section.appendChild(
-      keywordHeading
-    );
-
-    const keywordList =
-      safeCreateElement("ul");
-
-    for (
-      const {
-        keyword,
-        count
-      } of data.topKeywords
-    ) {
-
-      const item =
-        safeCreateElement("li");
-
-      item.textContent =
-        `${keyword} (${count})`;
-
-      keywordList.appendChild(item);
+    if (!container) {
+        return;
     }
 
-    section.appendChild(
-      keywordList
+    const user =
+        getCurrentUserFromContainer(
+            container
+        );
+
+    const session =
+        user
+            ? getSession(user)
+            : null;
+
+    const fingerprint =
+        session?.fingerprints ||
+        window.fingerprintProfile ||
+        {};
+
+    /*
+     * Don't destroy previously generated sections.
+     */
+    const section =
+        createSection(
+            "Passive Fingerprint"
+        );
+
+    const list =
+        document.createElement("ul");
+
+    const rows = [
+        [
+            "Username",
+            fingerprint.username
+        ],
+        [
+            "Length",
+            fingerprint.usernameLength
+        ],
+        [
+            "Contains digits",
+            fingerprint.digits
+        ],
+        [
+            "Contains uppercase",
+            fingerprint.uppercase
+        ],
+        [
+            "Contains underscore",
+            fingerprint.underscore
+        ],
+        [
+            "Contains hyphen",
+            fingerprint.hyphen
+        ],
+        [
+            "Contains dot",
+            fingerprint.dot
+        ],
+        [
+            "Contains symbols",
+            fingerprint.symbols
+        ],
+        [
+            "Keyword count",
+            fingerprint.keywordCount
+        ],
+        [
+            "Keyword entropy",
+            fingerprint.keywordEntropy
+        ],
+        [
+            "Alias candidates",
+            fingerprint.aliasCount
+        ],
+        [
+            "Sources",
+            fingerprint.sourceCount
+        ]
+    ];
+
+    for (const [label, value] of rows) {
+        list.appendChild(
+            createListItem(
+                label,
+                value
+            )
+        );
+    }
+
+    section.appendChild(list);
+
+    /*
+     * Top keywords.
+     */
+    if (
+        Array.isArray(
+            fingerprint.topKeywords
+        ) &&
+        fingerprint.topKeywords.length
+    ) {
+        const heading =
+            document.createElement("h4");
+
+        heading.textContent =
+            "Top Keywords";
+
+        section.appendChild(
+            heading
+        );
+
+        const keywordList =
+            document.createElement("ul");
+
+        for (
+            const item of
+            fingerprint.topKeywords
+        ) {
+            keywordList.appendChild(
+                createListItem(
+                    item.keyword,
+                    item.count
+                )
+            );
+        }
+
+        section.appendChild(
+            keywordList
+        );
+    }
+
+    /*
+     * GitHub summary.
+     */
+    if (fingerprint.github) {
+        const githubHeading =
+            document.createElement("h4");
+
+        githubHeading.textContent =
+            "GitHub Signal";
+
+        section.appendChild(
+            githubHeading
+        );
+
+        const githubList =
+            document.createElement("ul");
+
+        githubList.appendChild(
+            createListItem(
+                "Account found",
+                fingerprint.github.found
+            )
+        );
+
+        githubList.appendChild(
+            createListItem(
+                "Repositories collected",
+                fingerprint.github.repositories
+            )
+        );
+
+        githubList.appendChild(
+            createListItem(
+                "Organizations collected",
+                fingerprint.github.organizations
+            )
+        );
+
+        section.appendChild(
+            githubList
+        );
+    }
+
+    container.appendChild(
+        section
     );
-  }
-
-  container.appendChild(section);
-
-  /*
-   * Compatibility for callers that don't
-   * explicitly pass the fingerprint.
-   */
-  container.__oistFingerprint =
-    data;
 }
 
 
 // ============================================================
-// PERSONA / SIGNAL INFERENCE
+// PERSONA / CONTENT SIGNAL ANALYSIS
+// ============================================================
+//
+// Important:
+//
+// This does NOT pretend that arbitrary keywords can establish
+// someone's psychology. It reports observable content signals.
+//
 // ============================================================
 
-const SIGNAL_GROUPS = Object.freeze({
-  technicalAbstract: new Set([
-    "ambient",
-    "idm",
-    "electronic",
-    "synth",
-    "experimental"
-  ]),
+const SIGNALS = {
+    technical: [
+        "rust",
+        "cpp",
+        "c++",
+        "python",
+        "javascript",
+        "typescript",
+        "linux",
+        "kernel",
+        "backend",
+        "database",
+        "security",
+        "cryptography",
+        "encryption",
+        "networking",
+        "systems",
+        "infrastructure",
+        "api",
+        "compiler",
+        "reverse",
+        "engineering"
+    ],
 
-  complexityTolerance: new Set([
-    "metal",
-    "noise",
-    "industrial",
-    "experimental"
-  ]),
+    security: [
+        "exploit",
+        "exploitation",
+        "vulnerability",
+        "bypass",
+        "pentest",
+        "pentesting",
+        "malware",
+        "security",
+        "redteam",
+        "blueteam",
+        "purpleteam",
+        "threat",
+        "opsec",
+        "osint"
+    ],
 
-  mainstreamMusic: new Set([
-    "pop",
-    "charts",
-    "mainstream"
-  ])
-});
+    privacy: [
+        "privacy",
+        "telemetry",
+        "tracking",
+        "anonymous",
+        "anonymity",
+        "tor",
+        "vpn",
+        "encryption",
+        "e2ee",
+        "secure"
+    ],
+
+    creative: [
+        "game",
+        "gaming",
+        "unity",
+        "unreal",
+        "music",
+        "audio",
+        "design",
+        "story",
+        "narrative"
+    ],
+
+    ai: [
+        "ai",
+        "machine",
+        "learning",
+        "model",
+        "neural",
+        "inference",
+        "llm"
+    ]
+};
 
 
-function keywordMatches(
-  keywords,
-  vocabulary
+function collectSignalMatches(
+    keywords,
+    signalWords
 ) {
-  return Object.keys(
-    keywords || {}
-  ).filter(
-    keyword =>
-      vocabulary.has(
-        normalize(keyword)
-      )
-  );
+    const matches = [];
+
+    for (const keyword of Object.keys(
+        keywords || {}
+    )) {
+        if (
+            signalWords.includes(
+                normalize(keyword)
+            )
+        ) {
+            matches.push(
+                keyword
+            );
+        }
+    }
+
+    return unique(matches);
 }
 
 
 export function inferPersona(
-  keywords,
-  container
+    keywords,
+    container = document.getElementById(
+        "dynamicProfile"
+    )
 ) {
-  const signals = [];
+    const matches = {
+        technical:
+            collectSignalMatches(
+                keywords,
+                SIGNALS.technical
+            ),
 
-  const technical =
-    keywordMatches(
-      keywords,
-      SIGNAL_GROUPS.technicalAbstract
-    );
+        security:
+            collectSignalMatches(
+                keywords,
+                SIGNALS.security
+            ),
 
-  const complexity =
-    keywordMatches(
-      keywords,
-      SIGNAL_GROUPS.complexityTolerance
-    );
+        privacy:
+            collectSignalMatches(
+                keywords,
+                SIGNALS.privacy
+            ),
 
-  const mainstream =
-    keywordMatches(
-      keywords,
-      SIGNAL_GROUPS.mainstreamMusic
-    );
+        creative:
+            collectSignalMatches(
+                keywords,
+                SIGNALS.creative
+            ),
 
-  if (technical.length) {
-    signals.push({
-      label:
-        "Technical / Abstract Content Signal",
-      evidence:
-        technical
-    });
-  }
+        ai:
+            collectSignalMatches(
+                keywords,
+                SIGNALS.ai
+            )
+    };
 
-  if (complexity.length) {
-    signals.push({
-      label:
-        "High-Complexity Content Signal",
-      evidence:
-        complexity
-    });
-  }
+    /*
+     * Determine the strongest content domains.
+     */
+    const ranked =
+        Object.entries(matches)
+            .map(
+                ([category, evidence]) => ({
+                    category,
+                    evidence,
+                    score:
+                        evidence.length
+                })
+            )
+            .sort(
+                (a, b) =>
+                    b.score - a.score
+            );
 
-  if (mainstream.length) {
-    signals.push({
-      label:
-        "Mainstream Music Content Signal",
-      evidence:
-        mainstream
-    });
-  }
+    const session =
+        findSessionByKeywords(
+            keywords
+        );
 
-  if (!signals.length) {
-    signals.push({
-      label:
-        "Insufficient Content Signal",
-      evidence: []
-    });
-  }
+    if (session) {
+        session.personaSignals =
+            ranked;
+    }
 
-  if (container) {
+    if (!container) {
+        return ranked;
+    }
 
     const section =
-      safeCreateElement("section");
-
-    section.appendChild(
-      safeCreateElement(
-        "h3",
-        "Content Signal Analysis"
-      )
-    );
+        createSection(
+            "Content Signal Analysis"
+        );
 
     const list =
-      safeCreateElement("ul");
+        document.createElement("ul");
 
-    for (const signal of signals) {
+    const labels = {
+        technical:
+            "Technical / Systems",
 
-      const item =
-        safeCreateElement("li");
+        security:
+            "Security",
 
-      const label =
-        safeCreateElement(
-          "strong",
-          signal.label
+        privacy:
+            "Privacy",
+
+        creative:
+            "Creative / Multimedia",
+
+        ai:
+            "Artificial Intelligence"
+    };
+
+    let emitted = 0;
+
+    for (const item of ranked) {
+
+        if (!item.score) {
+            continue;
+        }
+
+        emitted++;
+
+        const li =
+            document.createElement("li");
+
+        const strong =
+            document.createElement(
+                "strong"
+            );
+
+        strong.textContent =
+            labels[item.category];
+
+        li.appendChild(strong);
+
+        li.appendChild(
+            document.createTextNode(
+                ` — ${item.evidence.join(", ")}`
+            )
         );
 
-      item.appendChild(label);
+        list.appendChild(li);
+    }
 
-      if (signal.evidence.length) {
-        item.appendChild(
-          safeCreateElement(
-            "span",
-            ` — evidence: ${signal.evidence.join(", ")}`
-          )
-        );
-      }
+    if (!emitted) {
+        const li =
+            document.createElement("li");
 
-      list.appendChild(item);
+        li.textContent =
+            "No strong content-domain signal detected.";
+
+        list.appendChild(li);
     }
 
     section.appendChild(list);
 
     const note =
-      safeCreateElement(
-        "p",
-        "These are content-derived signals, not psychological diagnoses or definitive personality classifications."
-      );
+        document.createElement("p");
+
+    note.textContent =
+        "Signals are derived from observable text and should not be treated as definitive personality or psychological classifications.";
 
     section.appendChild(note);
 
-    container.appendChild(section);
-  }
+    container.appendChild(
+        section
+    );
 
-  return signals;
+    return ranked;
 }
 
 
@@ -788,514 +1013,539 @@ export function inferPersona(
 // GITHUB API
 // ============================================================
 
-async function githubFetch(
-  path,
-  {
-    signal
-  } = {}
+async function githubRequest(
+    path
 ) {
+    const controller =
+        new AbortController();
 
-  throwIfAborted(signal);
+    const timeout =
+        setTimeout(
+            () =>
+                controller.abort(),
+            CONFIG.requestTimeout
+        );
 
-  const controller =
-    new AbortController();
+    try {
+        const response =
+            await fetch(
+                `${CONFIG.githubApi}${path}`,
+                {
+                    method: "GET",
 
-  const abortHandler = () =>
-    controller.abort();
+                    headers: {
+                        "Accept":
+                            "application/vnd.github+json",
 
-  signal?.addEventListener(
-    "abort",
-    abortHandler,
-    { once: true }
-  );
+                        "X-GitHub-Api-Version":
+                            "2022-11-28"
+                    },
 
-  try {
+                    signal:
+                        controller.signal
+                }
+            );
 
-    const request =
-      fetch(
-        `${CONFIG.githubApi}${path}`,
-        {
-          method: "GET",
+        if (
+            response.status === 403
+        ) {
+            const remaining =
+                response.headers.get(
+                    "x-ratelimit-remaining"
+                );
 
-          headers: {
-            "Accept":
-              "application/vnd.github+json",
-
-            "X-GitHub-Api-Version":
-              "2022-11-28"
-          },
-
-          signal:
-            controller.signal
+            if (remaining === "0") {
+                throw new Error(
+                    "GitHub API rate limit exhausted."
+                );
+            }
         }
-      );
 
-    const response =
-      await withTimeout(
-        request,
-        CONFIG.githubTimeout,
-        signal
-      );
+        if (
+            !response.ok
+        ) {
+            throw new Error(
+                `GitHub API returned HTTP ${response.status}.`
+            );
+        }
 
-    throwIfAborted(signal);
+        return await response.json();
 
-    /*
-     * Explicitly detect rate limiting.
-     */
-    if (response.status === 403) {
-
-      const remaining =
-        response.headers.get(
-          "x-ratelimit-remaining"
-        );
-
-      if (remaining === "0") {
-        throw new Error(
-          "GitHub API rate limit exhausted."
-        );
-      }
+    } finally {
+        clearTimeout(timeout);
     }
-
-    if (!response.ok) {
-      throw new Error(
-        `GitHub API returned HTTP ${response.status}.`
-      );
-    }
-
-    return await response.json();
-
-  } finally {
-
-    signal?.removeEventListener(
-      "abort",
-      abortHandler
-    );
-  }
 }
 
 
-async function fetchGitHubPages(
-  path,
-  {
-    signal,
-    maxPages = CONFIG.githubMaxPages
-  } = {}
+async function githubPages(
+    path
 ) {
+    const results = [];
 
-  const results = [];
-
-  for (
-    let page = 1;
-    page <= maxPages;
-    page++
-  ) {
-
-    throwIfAborted(signal);
-
-    const separator =
-      path.includes("?")
-        ? "&"
-        : "?";
-
-    const data =
-      await githubFetch(
-        `${path}${separator}per_page=${CONFIG.githubPerPage}&page=${page}`,
-        { signal }
-      );
-
-    if (!Array.isArray(data)) {
-      break;
-    }
-
-    results.push(...data);
-
-    if (
-      data.length <
-      CONFIG.githubPerPage
+    for (
+        let page = 1;
+        page <= CONFIG.githubMaxPages;
+        page++
     ) {
-      break;
-    }
-  }
+        const separator =
+            path.includes("?")
+                ? "&"
+                : "?";
 
-  return results;
+        const data =
+            await githubRequest(
+                `${path}${separator}per_page=${CONFIG.githubPerPage}&page=${page}`
+            );
+
+        if (
+            !Array.isArray(data)
+        ) {
+            break;
+        }
+
+        results.push(
+            ...data
+        );
+
+        if (
+            data.length <
+            CONFIG.githubPerPage
+        ) {
+            break;
+        }
+    }
+
+    return results;
 }
 
 
 // ============================================================
-// GITHUB KEYWORD COLLECTION
+// GITHUB ANALYSIS
 // ============================================================
 
 export async function fetchGitHubKeywords(
-  user,
-  context = {}
+    user
 ) {
+    const username =
+        normalize(user);
 
-  const username =
-    normalizeUsername(user);
+    const session =
+        getSession(user);
 
-  const keywords =
-    context.keywords ||
-    {};
+    const keywords =
+        getControllerKeywordStore(
+            user
+        );
 
-  context.keywords =
-    keywords;
+    if (!username) {
+        return keywords;
+    }
 
-  context.sources ??= [];
+    try {
+        /*
+         * GitHub profile.
+         */
+        const profile =
+            await githubRequest(
+                `/users/${encodeURIComponent(username)}`
+            );
 
-  try {
+        session.github.found =
+            true;
 
-    /*
-     * Profile
-     */
-    const profile =
-      await githubFetch(
-        `/users/${encodeURIComponent(username)}`,
-        {
-          signal:
-            context.signal
+        session.github.profile =
+            profile;
+
+        session.sources.add(
+            "GitHub profile"
+        );
+
+        extractKeywords(
+            profile.login,
+            username,
+            keywords
+        );
+
+        extractKeywords(
+            profile.name,
+            username,
+            keywords
+        );
+
+        extractKeywords(
+            profile.bio,
+            username,
+            keywords
+        );
+
+        extractKeywords(
+            profile.company,
+            username,
+            keywords
+        );
+
+        extractKeywords(
+            profile.blog,
+            username,
+            keywords
+        );
+
+        /*
+         * Repositories.
+         */
+        const repositories =
+            await githubPages(
+                `/users/${encodeURIComponent(username)}/repos?sort=updated`
+            );
+
+        session.github.repositories =
+            repositories;
+
+        if (repositories.length) {
+            session.sources.add(
+                "GitHub repositories"
+            );
         }
-      );
 
-    extractKeywords(
-      profile.bio,
-      username,
-      keywords
-    );
+        for (
+            const repository of
+            repositories
+        ) {
+            extractKeywords(
+                repository.name,
+                username,
+                keywords
+            );
 
-    extractKeywords(
-      profile.name,
-      username,
-      keywords
-    );
+            extractKeywords(
+                repository.description,
+                username,
+                keywords
+            );
 
-    extractKeywords(
-      profile.company,
-      username,
-      keywords
-    );
+            extractKeywords(
+                repository.language,
+                username,
+                keywords
+            );
 
-    extractKeywords(
-      profile.blog,
-      username,
-      keywords
-    );
-
-    context.sources.push(
-      "GitHub profile"
-    );
-
-
-    /*
-     * Repositories
-     */
-    const repos =
-      await fetchGitHubPages(
-        `/users/${encodeURIComponent(username)}/repos?sort=updated`,
-        {
-          signal:
-            context.signal
+            if (
+                Array.isArray(
+                    repository.topics
+                )
+            ) {
+                extractKeywords(
+                    repository.topics.join(" "),
+                    username,
+                    keywords
+                );
+            }
         }
-      );
 
-    for (const repo of repos) {
+        /*
+         * Organizations.
+         */
+        const organizations =
+            await githubPages(
+                `/users/${encodeURIComponent(username)}/orgs`
+            );
 
-      throwIfAborted(
-        context.signal
-      );
+        session.github.organizations =
+            organizations;
 
-      extractKeywords(
-        repo.name,
-        username,
-        keywords
-      );
-
-      extractKeywords(
-        repo.description,
-        username,
-        keywords
-      );
-
-      extractKeywords(
-        repo.language,
-        username,
-        keywords
-      );
-
-      extractKeywords(
-        repo.topics?.join(" "),
-        username,
-        keywords
-      );
-    }
-
-    if (repos.length) {
-      context.sources.push(
-        "GitHub repositories"
-      );
-    }
-
-
-    /*
-     * Organizations
-     */
-    const organizations =
-      await fetchGitHubPages(
-        `/users/${encodeURIComponent(username)}/orgs`,
-        {
-          signal:
-            context.signal
+        if (organizations.length) {
+            session.sources.add(
+                "GitHub organizations"
+            );
         }
-      );
 
-    for (const organization of organizations) {
+        for (
+            const organization of
+            organizations
+        ) {
+            extractKeywords(
+                organization.login,
+                username,
+                keywords
+            );
 
-      throwIfAborted(
-        context.signal
-      );
+            extractKeywords(
+                organization.description,
+                username,
+                keywords
+            );
+        }
 
-      extractKeywords(
-        organization.login,
-        username,
-        keywords
-      );
+        return keywords;
 
-      extractKeywords(
-        organization.description,
-        username,
-        keywords
-      );
+    } catch (error) {
+
+        /*
+         * A 404 simply means there isn't a
+         * matching public GitHub account.
+         */
+        if (
+            String(error.message)
+                .includes("HTTP 404")
+        ) {
+            session.github.found =
+                false;
+
+            session.github.error =
+                "GitHub account not found.";
+
+            return keywords;
+        }
+
+        session.github.error =
+            error.message;
+
+        addWarning(
+            user,
+            `GitHub analysis failed: ${error.message}`
+        );
+
+        console.warn(
+            "[OIST] GitHub analysis failed:",
+            error
+        );
+
+        return keywords;
     }
-
-    if (organizations.length) {
-      context.sources.push(
-        "GitHub organizations"
-      );
-    }
-
-    return keywords;
-
-  } catch (error) {
-
-    /*
-     * Aborts should propagate.
-     */
-    if (
-      error?.name ===
-      "AbortError"
-    ) {
-      throw error;
-    }
-
-    /*
-     * GitHub not having a user is different
-     * from the API being unavailable.
-     */
-    if (
-      String(error?.message)
-        .includes("HTTP 404")
-    ) {
-      context.warnings ??= [];
-
-      context.warnings.push(
-        "No matching GitHub account found."
-      );
-
-      return keywords;
-    }
-
-    console.warn(
-      "GitHub analysis failed:",
-      error
-    );
-
-    context.warnings ??= [];
-
-    context.warnings.push(
-      `GitHub analysis unavailable: ${error.message}`
-    );
-
-    return keywords;
-  }
 }
 
 
 // ============================================================
-// GRAPH CONSTRUCTION
+// GRAPH
 // ============================================================
 
-export function buildGraph(
-  user,
-  context = {}
-) {
-  const username =
-    String(user);
+export function buildGraph(user) {
+    const username =
+        String(user);
 
-  const nodes = [];
-  const links = [];
+    const session =
+        getSession(user);
 
-  const nodeIds =
-    new Set();
+    const nodes = [];
+    const links = [];
 
-  const linkKeys =
-    new Set();
+    const nodeIds =
+        new Set();
+
+    const linkIds =
+        new Set();
 
 
-  function addNode(
-    id,
-    group = 1,
-    metadata = {}
-  ) {
-
-    const normalizedId =
-      String(id);
-
-    if (!normalizedId) {
-      return false;
-    }
-
-    if (
-      nodeIds.has(normalizedId)
+    function addNode(
+        id,
+        group,
+        metadata = {}
     ) {
-      return true;
+        id = String(id);
+
+        if (!id) {
+            return false;
+        }
+
+        if (
+            nodeIds.has(id)
+        ) {
+            return true;
+        }
+
+        if (
+            nodes.length >=
+            CONFIG.maxGraphNodes
+        ) {
+            return false;
+        }
+
+        nodes.push({
+            id,
+            group,
+            ...metadata
+        });
+
+        nodeIds.add(id);
+
+        return true;
     }
 
-    if (
-      nodes.length >=
-      CONFIG.maxGraphNodes
+
+    function addLink(
+        source,
+        target,
+        type
     ) {
-      return false;
+        const key =
+            `${source}\u0000${target}\u0000${type}`;
+
+        if (
+            linkIds.has(key)
+        ) {
+            return;
+        }
+
+        if (
+            links.length >=
+            CONFIG.maxGraphLinks
+        ) {
+            return;
+        }
+
+        links.push({
+            source,
+            target,
+            type
+        });
+
+        linkIds.add(key);
     }
 
-    nodes.push({
-      id: normalizedId,
-      group,
-      ...metadata
-    });
 
-    nodeIds.add(
-      normalizedId
+    /*
+     * Primary node.
+     */
+    addNode(
+        username,
+        1,
+        {
+            primary: true,
+            type: "identity"
+        }
     );
 
-    return true;
-  }
 
-
-  function addLink(
-    source,
-    target,
-    type = "related"
-  ) {
-
-    const key =
-      `${source}\u0000${target}\u0000${type}`;
-
-    if (
-      linkKeys.has(key)
+    /*
+     * Alias nodes.
+     */
+    for (
+        const alias of
+        session.aliases
     ) {
-      return;
-    }
-
-    if (
-      links.length >=
-      CONFIG.maxGraphLinks
-    ) {
-      return;
-    }
-
-    links.push({
-      source,
-      target,
-      type
-    });
-
-    linkKeys.add(key);
-  }
-
-
-  /*
-   * Primary identity.
-   */
-  addNode(
-    username,
-    1,
-    {
-      primary: true
-    }
-  );
-
-
-  /*
-   * Aliases.
-   */
-  const aliases =
-    context.aliasCandidates instanceof Set
-      ? context.aliasCandidates
-      : new Set();
-
-  for (const alias of aliases) {
-
-    if (alias === username) {
-      continue;
-    }
-
-    if (
-      addNode(
-        alias,
-        2,
-        {
-          type: "alias"
+        if (
+            alias === username
+        ) {
+            continue;
         }
-      )
-    ) {
-      addLink(
-        username,
-        alias,
-        "alias"
-      );
-    }
-  }
 
-
-  /*
-   * External clusters / relationships.
-   */
-  const clusters =
-    Array.isArray(
-      context.userClusters?.[username]
-    )
-      ? context.userClusters[username]
-      : [];
-
-  for (const cluster of clusters) {
-
-    if (
-      addNode(
-        cluster,
-        3,
-        {
-          type: "cluster"
+        if (
+            addNode(
+                alias,
+                2,
+                {
+                    type: "alias"
+                }
+            )
+        ) {
+            addLink(
+                username,
+                alias,
+                "alias"
+            );
         }
-      )
-    ) {
-      addLink(
-        username,
-        cluster,
-        "cluster"
-      );
     }
-  }
 
 
-  context.graphNodes =
-    nodes;
+    /*
+     * GitHub node.
+     *
+     * This represents the public source,
+     * not proof that every GitHub artifact
+     * belongs to the searched person.
+     */
+    if (
+        session.github.found
+    ) {
+        const githubNode =
+            `github:${username}`;
 
-  context.graphLinks =
-    links;
+        addNode(
+            githubNode,
+            3,
+            {
+                type: "source",
+                label: "GitHub"
+            }
+        );
 
-  return {
-    nodes,
-    links
-  };
+        addLink(
+            username,
+            githubNode,
+            "source"
+        );
+
+
+        /*
+         * Repository nodes.
+         *
+         * Keep this bounded so a large GitHub
+         * account doesn't turn the graph into
+         * an unusable hairball.
+         */
+        for (
+            const repository of
+            session.github.repositories.slice(
+                0,
+                100
+            )
+        ) {
+            const repoId =
+                `repo:${repository.full_name}`;
+
+            if (
+                addNode(
+                    repoId,
+                    4,
+                    {
+                        type: "repository",
+                        label:
+                            repository.name
+                    }
+                )
+            ) {
+                addLink(
+                    githubNode,
+                    repoId,
+                    "repository"
+                );
+            }
+        }
+    }
+
+
+    /*
+     * Copy into the controller's globals.
+     *
+     * Your current script uses:
+     *
+     * state.graphNodes
+     * state.graphLinks
+     *
+     * but does not pass those objects into OIST.js.
+     *
+     * Mirroring them here preserves compatibility.
+     */
+    if (
+        typeof window !== "undefined"
+    ) {
+        window.graphNodes =
+            nodes;
+
+        window.graphLinks =
+            links;
+    }
+
+    session.graphNodes =
+        nodes;
+
+    session.graphLinks =
+        links;
+
+    return {
+        nodes,
+        links
+    };
 }
 
 
@@ -1303,359 +1553,646 @@ export function buildGraph(
 // GRAPH RENDERING
 // ============================================================
 
-export function renderGraph(
-  context = {}
-) {
+export function renderGraph() {
 
-  const container =
-    context.container ||
-    document.getElementById(
-      "dynamicProfile"
-    );
+    const container =
+        document.getElementById(
+            "dynamicProfile"
+        );
 
-  if (!container) {
-    return null;
-  }
+    if (!container) {
+        return null;
+    }
 
-  if (
-    typeof window.d3 ===
-    "undefined"
-  ) {
-    console.warn(
-      "D3 is unavailable; graph rendering skipped."
-    );
+    if (
+        typeof window.d3 ===
+        "undefined"
+    ) {
+        console.warn(
+            "[OIST] D3 is not available; graph rendering skipped."
+        );
 
-    return null;
-  }
-
-  const nodes =
-    Array.isArray(context.graphNodes)
-      ? context.graphNodes
-      : [];
-
-  const links =
-    Array.isArray(context.graphLinks)
-      ? context.graphLinks
-      : [];
-
-  if (!nodes.length) {
-    return null;
-  }
-
-
-  /*
-   * Remove an old graph generated by this module.
-   */
-  container
-    .querySelectorAll(
-      "[data-oist-graph]"
-    )
-    .forEach(
-      element => element.remove()
-    );
-
-
-  const section =
-    safeCreateElement(
-      "section"
-    );
-
-  section.dataset.oistGraph =
-    "true";
-
-  section.appendChild(
-    safeCreateElement(
-      "h3",
-      "Identity Graph"
-    )
-  );
-
-
-  const width =
-    Math.min(
-      900,
-      Math.max(
-        320,
-        container.clientWidth || 700
-      )
-    );
-
-  const height = 450;
-
-
-  const svg =
-    d3.select(section)
-      .append("svg")
-      .attr(
-        "viewBox",
-        `0 0 ${width} ${height}`
-      )
-      .attr(
-        "width",
-        "100%"
-      )
-      .attr(
-        "height",
-        height
-      )
-      .attr(
-        "role",
-        "img"
-      )
-      .attr(
-        "aria-label",
-        "Identity relationship graph"
-      );
-
-
-  const simulation =
-    d3.forceSimulation(
-      nodes
-    )
-      .force(
-        "link",
-        d3.forceLink(
-          links
-        )
-        .id(
-          node => node.id
-        )
-        .distance(100)
-      )
-      .force(
-        "charge",
-        d3.forceManyBody()
-          .strength(-300)
-      )
-      .force(
-        "center",
-        d3.forceCenter(
-          width / 2,
-          height / 2
-        )
-      )
-      .force(
-        "collision",
-        d3.forceCollide()
-          .radius(24)
-      );
-
-
-  /*
-   * Links.
-   */
-  const link =
-    svg
-      .append("g")
-      .attr(
-        "class",
-        "links"
-      )
-      .selectAll("line")
-      .data(
-        links
-      )
-      .join("line")
-      .attr(
-        "stroke",
-        "#555"
-      )
-      .attr(
-        "stroke-width",
-        1.5
-      )
-      .attr(
-        "opacity",
-        0.75
-      );
-
-
-  /*
-   * Nodes.
-   */
-  const node =
-    svg
-      .append("g")
-      .attr(
-        "class",
-        "nodes"
-      )
-      .selectAll("circle")
-      .data(
-        nodes
-      )
-      .join("circle")
-      .attr(
-        "r",
-        node =>
-          node.primary
-            ? 9
-            : 6
-      )
-      .attr(
-        "fill",
-        node => {
-          if (node.primary) {
-            return "#58a6ff";
-          }
-
-          if (
-            node.group === 2
-          ) {
-            return "#f778ba";
-          }
-
-          return "#7ee787";
-        }
-      )
-      .attr(
-        "stroke",
-        "#0b0e13"
-      )
-      .attr(
-        "stroke-width",
-        1.5
-      );
-
-
-  /*
-   * Labels.
-   */
-  const label =
-    svg
-      .append("g")
-      .attr(
-        "class",
-        "labels"
-      )
-      .selectAll("text")
-      .data(
-        nodes
-      )
-      .join("text")
-      .text(
-        node => node.id
-      )
-      .attr(
-        "font-size",
-        "10px"
-      )
-      .attr(
-        "fill",
-        "currentColor"
-      )
-      .attr(
-        "pointer-events",
-        "none"
-      );
-
-
-  /*
-   * Dragging.
-   */
-  node.call(
-    d3.drag()
-      .on(
-        "start",
-        (event, node) => {
-
-          if (!event.active) {
-            simulation.alphaTarget(
-              0.3
-            ).restart();
-          }
-
-          node.fx =
-            node.x;
-
-          node.fy =
-            node.y;
-        }
-      )
-      .on(
-        "drag",
-        (event, node) => {
-
-          node.fx =
-            event.x;
-
-          node.fy =
-            event.y;
-        }
-      )
-      .on(
-        "end",
-        (event, node) => {
-
-          if (!event.active) {
-            simulation.alphaTarget(
-              0
+        const warning =
+            createSection(
+                "Identity Graph"
             );
-          }
 
-          node.fx = null;
-          node.fy = null;
+        warning.appendChild(
+            document.createTextNode(
+                "D3 is not loaded. Graph rendering is unavailable."
+            )
+        );
+
+        container.appendChild(
+            warning
+        );
+
+        return null;
+    }
+
+
+    /*
+     * Prefer the current controller-compatible globals.
+     */
+    const nodes =
+        Array.isArray(
+            window.graphNodes
+        )
+            ? window.graphNodes
+            : [];
+
+
+    const links =
+        Array.isArray(
+            window.graphLinks
+        )
+            ? window.graphLinks
+            : [];
+
+
+    if (!nodes.length) {
+        return null;
+    }
+
+
+    /*
+     * Remove an existing OIST graph if the
+     * function is accidentally called twice.
+     */
+    const oldGraph =
+        container.querySelector(
+            "[data-oist-graph]"
+        );
+
+    if (oldGraph) {
+        oldGraph.remove();
+    }
+
+
+    const section =
+        createSection(
+            "Identity Graph"
+        );
+
+    section.dataset.oistGraph =
+        "true";
+
+
+    const width =
+        Math.max(
+            320,
+            Math.min(
+                900,
+                container.clientWidth ||
+                    700
+            )
+        );
+
+    const height =
+        450;
+
+
+    const svg =
+        d3
+            .select(section)
+            .append("svg")
+            .attr(
+                "viewBox",
+                `0 0 ${width} ${height}`
+            )
+            .attr(
+                "width",
+                "100%"
+            )
+            .attr(
+                "height",
+                height
+            )
+            .attr(
+                "role",
+                "img"
+            )
+            .attr(
+                "aria-label",
+                "Identity relationship graph"
+            );
+
+
+    /*
+     * Simulation.
+     */
+    const simulation =
+        d3
+            .forceSimulation(
+                nodes
+            )
+            .force(
+                "link",
+                d3
+                    .forceLink(
+                        links
+                    )
+                    .id(
+                        node =>
+                            node.id
+                    )
+                    .distance(
+                        link => {
+                            if (
+                                link.type ===
+                                "alias"
+                            ) {
+                                return 90;
+                            }
+
+                            if (
+                                link.type ===
+                                "repository"
+                            ) {
+                                return 120;
+                            }
+
+                            return 100;
+                        }
+                    )
+            )
+            .force(
+                "charge",
+                d3
+                    .forceManyBody()
+                    .strength(-300)
+            )
+            .force(
+                "center",
+                d3.forceCenter(
+                    width / 2,
+                    height / 2
+                )
+            )
+            .force(
+                "collision",
+                d3
+                    .forceCollide()
+                    .radius(25)
+            );
+
+
+    /*
+     * Links.
+     */
+    const link =
+        svg
+            .append("g")
+            .attr(
+                "class",
+                "oist-links"
+            )
+            .selectAll("line")
+            .data(
+                links
+            )
+            .join("line")
+            .attr(
+                "stroke",
+                link => {
+                    switch (
+                        link.type
+                    ) {
+                        case "alias":
+                            return "#f778ba";
+
+                        case "source":
+                            return "#7ee787";
+
+                        case "repository":
+                            return "#8b949e";
+
+                        default:
+                            return "#555";
+                    }
+                }
+            )
+            .attr(
+                "stroke-width",
+                1.5
+            )
+            .attr(
+                "opacity",
+                0.75
+            );
+
+
+    /*
+     * Nodes.
+     */
+    const node =
+        svg
+            .append("g")
+            .attr(
+                "class",
+                "oist-nodes"
+            )
+            .selectAll("circle")
+            .data(
+                nodes
+            )
+            .join("circle")
+            .attr(
+                "r",
+                node =>
+                    node.primary
+                        ? 9
+                        : 6
+            )
+            .attr(
+                "fill",
+                node => {
+
+                    if (
+                        node.primary
+                    ) {
+                        return "#58a6ff";
+                    }
+
+                    switch (
+                        node.type
+                    ) {
+                        case "alias":
+                            return "#f778ba";
+
+                        case "source":
+                            return "#7ee787";
+
+                        case "repository":
+                            return "#8b949e";
+
+                        default:
+                            return "#c9d1d9";
+                    }
+                }
+            )
+            .attr(
+                "stroke",
+                "#0b0e13"
+            )
+            .attr(
+                "stroke-width",
+                1.5
+            );
+
+
+    /*
+     * Labels.
+     */
+    const label =
+        svg
+            .append("g")
+            .attr(
+                "class",
+                "oist-labels"
+            )
+            .selectAll("text")
+            .data(
+                nodes
+            )
+            .join("text")
+            .text(
+                node =>
+                    node.label ||
+                    node.id
+            )
+            .attr(
+                "font-size",
+                node =>
+                    node.primary
+                        ? "12px"
+                        : "10px"
+            )
+            .attr(
+                "font-weight",
+                node =>
+                    node.primary
+                        ? "700"
+                        : "400"
+            )
+            .attr(
+                "fill",
+                "currentColor"
+            )
+            .attr(
+                "pointer-events",
+                "none"
+            );
+
+
+    /*
+     * Drag support.
+     */
+    node.call(
+        d3
+            .drag()
+            .on(
+                "start",
+                (event, d) => {
+
+                    if (
+                        !event.active
+                    ) {
+                        simulation
+                            .alphaTarget(
+                                0.3
+                            )
+                            .restart();
+                    }
+
+                    d.fx = d.x;
+                    d.fy = d.y;
+                }
+            )
+            .on(
+                "drag",
+                (event, d) => {
+                    d.fx =
+                        event.x;
+
+                    d.fy =
+                        event.y;
+                }
+            )
+            .on(
+                "end",
+                (event, d) => {
+
+                    if (
+                        !event.active
+                    ) {
+                        simulation
+                            .alphaTarget(
+                                0
+                            );
+                    }
+
+                    d.fx = null;
+                    d.fy = null;
+                }
+            )
+    );
+
+
+    /*
+     * Tooltip-like native browser title.
+     */
+    node.append("title")
+        .text(
+            node => {
+                if (
+                    node.primary
+                ) {
+                    return `${node.id} — primary identity`;
+                }
+
+                if (
+                    node.type ===
+                    "alias"
+                ) {
+                    return `${node.id} — alias candidate`;
+                }
+
+                if (
+                    node.type ===
+                    "source"
+                ) {
+                    return `${node.label || node.id} — public source`;
+                }
+
+                if (
+                    node.type ===
+                    "repository"
+                ) {
+                    return `${node.label || node.id} — repository`;
+                }
+
+                return node.id;
+            }
+        );
+
+
+    /*
+     * Simulation tick.
+     */
+    simulation.on(
+        "tick",
+        () => {
+
+            link
+                .attr(
+                    "x1",
+                    d => d.source.x
+                )
+                .attr(
+                    "y1",
+                    d => d.source.y
+                )
+                .attr(
+                    "x2",
+                    d => d.target.x
+                )
+                .attr(
+                    "y2",
+                    d => d.target.y
+                );
+
+            node
+                .attr(
+                    "cx",
+                    d => d.x
+                )
+                .attr(
+                    "cy",
+                    d => d.y
+                );
+
+            label
+                .attr(
+                    "x",
+                    d => d.x + 9
+                )
+                .attr(
+                    "y",
+                    d => d.y + 4
+                );
         }
-      )
-  );
+    );
 
 
-  /*
-   * Simulation updates.
-   */
-  simulation.on(
-    "tick",
-    () => {
+    container.appendChild(
+        section
+    );
 
-      link
-        .attr(
-          "x1",
-          node => node.source.x
-        )
-        .attr(
-          "y1",
-          node => node.source.y
-        )
-        .attr(
-          "x2",
-          node => node.target.x
-        )
-        .attr(
-          "y2",
-          node => node.target.y
-        );
 
-      node
-        .attr(
-          "cx",
-          node => node.x
-        )
-        .attr(
-          "cy",
-          node => node.y
-        );
+    return {
+        svg,
+        simulation,
+        nodes,
+        links
+    };
+}
 
-      label
-        .attr(
-          "x",
-          node => node.x + 9
-        )
-        .attr(
-          "y",
-          node => node.y + 4
+
+// ============================================================
+// CONTROLLER COMPATIBILITY HELPERS
+// ============================================================
+
+function getControllerKeywordStore(
+    user
+) {
+    /*
+     * Your script currently creates:
+     *
+     * state.keywordCache = {};
+     *
+     * and then:
+     *
+     * const keywords =
+     *     state.keywordCache[user] ??= {};
+     *
+     * OIST.js does not receive `state`, so the
+     * easiest compatibility bridge is to use
+     * the same global object when available.
+     *
+     * If it isn't exposed, the module falls back
+     * to its own session-local keyword store.
+     */
+
+    if (
+        window.__OISTKeywordCache &&
+        typeof window.__OISTKeywordCache ===
+            "object"
+    ) {
+        return (
+            window.__OISTKeywordCache[user] ||=
+                {}
         );
     }
-  );
+
+    const session =
+        getSession(user);
+
+    session.keywords ||=
+        {};
+
+    return session.keywords;
+}
 
 
-  container.appendChild(
-    section
-  );
+function findSessionByKeywords(
+    keywords
+) {
+    for (const session of sessions.values()) {
+        if (
+            session.keywords ===
+            keywords
+        ) {
+            return session;
+        }
+    }
 
-  return {
-    svg,
-    simulation,
-    nodes,
-    links
-  };
+    return null;
+}
+
+
+function getCurrentUserFromContainer(
+    container
+) {
+    /*
+     * Search for the heading generated by
+     * the controller:
+     *
+     * Search Results for: USER
+     */
+    const heading =
+        container.closest(
+            "#result"
+        )?.querySelector(
+            "h2"
+        );
+
+    if (!heading) {
+        /*
+         * Fall back to the only active session.
+         */
+        if (
+            sessions.size === 1
+        ) {
+            return [
+                ...sessions.keys()
+            ][0];
+        }
+
+        return null;
+    }
+
+    const match =
+        heading.textContent.match(
+            /Search Results for:\s*(.+)$/i
+        );
+
+    return match
+        ? normalize(match[1])
+        : null;
+}
+
+
+// ============================================================
+// OPTIONAL DEBUG API
+// ============================================================
+
+export function getAnalysis(user) {
+    const session =
+        getSession(user);
+
+    return {
+        username:
+            session.username,
+
+        aliases:
+            [...session.aliases],
+
+        sources:
+            [...session.sources],
+
+        fingerprint:
+            session.fingerprints,
+
+        confidence:
+            session.confidence,
+
+        github:
+            session.github,
+
+        personaSignals:
+            session.personaSignals,
+
+        graphNodes:
+            session.graphNodes,
+
+        graphLinks:
+            session.graphLinks,
+
+        warnings:
+            session.warnings
+    };
+}
+
+
+export function clearAnalysis(user) {
+    if (user) {
+        sessions.delete(
+            normalize(user)
+        );
+
+        return;
+    }
+
+    sessions.clear();
 }
