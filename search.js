@@ -1,1041 +1,378 @@
-"use strict";
-
-/*
- * Search / OSINT profile controller
- *
- * Responsibilities:
- *   - validate input
- *   - load local profile safely
- *   - dynamically load analysis modules
- *   - execute modules in a controlled pipeline
- *   - prevent stale searches from overwriting newer results
- *   - handle cancellation / timeouts
- *   - render results without unsafe HTML interpolation
- *   - maintain per-search state
- */
-
-const CONFIG = Object.freeze({
-  moduleDirectory: "./modules/",
-  profileDirectory: "./individual/",
-  moduleFile: "OIST.js",
-
-  profileTimeout: 10_000,
-  moduleTimeout: 15_000,
-
-  maxUsernameLength: 128,
-
-  debug: false
-});
-
-
-/* ============================================================
- * DOM
- * ============================================================ */
-
 const input = document.getElementById("inputSearch");
 const btn = document.getElementById("searchBtn");
 const result = document.getElementById("result");
 
-if (!input || !btn || !result) {
-  throw new Error("Required search UI elements are missing.");
-}
+const moduleCache = new Map();
 
-
-/* ============================================================
- * Runtime state
- * ============================================================ */
-
-const runtime = {
-  moduleCache: new Map(),
-  profileCache: new Map(),
-
-  activeController: null,
-  searchId: 0,
-
-  busy: false
+const state = {
+    keywordCache: Object.create(null),
+    fingerprints: Object.create(null),
+    confidence: Object.create(null),
+    aliasCandidates: new Set(),
+    graphNodes: [],
+    graphLinks: []
 };
 
-
-/* ============================================================
- * Utility
- * ============================================================ */
-
-function createId(prefix = "search") {
-  return `${prefix}-${Date.now()}-${crypto.randomUUID()}`;
-}
-
-
-function normalizeUsername(value) {
-  return value
-    .trim()
-    .replace(/\s+/g, "");
-}
-
-
-function validateUsername(username) {
-  if (!username) {
-    return {
-      valid: false,
-      reason: "Enter a username."
-    };
-  }
-
-  if (username.length > CONFIG.maxUsernameLength) {
-    return {
-      valid: false,
-      reason: `Username exceeds ${CONFIG.maxUsernameLength} characters.`
-    };
-  }
-
-  /*
-   * Restrict path traversal and unexpected path syntax.
-   *
-   * Adjust this regex if your profile naming scheme intentionally
-   * supports other characters.
-   */
-  if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
-    return {
-      valid: false,
-      reason: "Username contains unsupported characters."
-    };
-  }
-
-  return {
-    valid: true,
-    reason: null
-  };
-}
-
-
-function createAbortError() {
-  const error = new Error("Operation aborted.");
-  error.name = "AbortError";
-  return error;
-}
-
-
-function isAbortError(error) {
-  return error?.name === "AbortError";
-}
-
-
-function throwIfAborted(signal) {
-  if (signal?.aborted) {
-    throw createAbortError();
-  }
-}
-
-
-function withTimeout(promise, timeout, signal) {
-  return new Promise((resolve, reject) => {
-    let finished = false;
-
-    const timer = setTimeout(() => {
-      if (finished) return;
-
-      finished = true;
-
-      reject(
-        new Error(`Operation timed out after ${timeout}ms.`)
-      );
-    }, timeout);
-
-    const abortHandler = () => {
-      if (finished) return;
-
-      finished = true;
-      clearTimeout(timer);
-
-      reject(createAbortError());
-    };
-
-    signal?.addEventListener("abort", abortHandler, {
-      once: true
-    });
-
-    promise.then(
-      value => {
-        if (finished) return;
-
-        finished = true;
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", abortHandler);
-
-        resolve(value);
-      },
-
-      error => {
-        if (finished) return;
-
-        finished = true;
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", abortHandler);
-
-        reject(error);
-      }
-    );
-  });
-}
-
-
-/* ============================================================
- * Search session
- * ============================================================ */
-
-function createSearchSession(username) {
-  return {
-    id: createId(),
-    username,
-
-    startedAt: performance.now(),
-
-    keywordCache: {},
-    fingerprints: {},
-    confidence: {},
-
-    aliasCandidates: new Set(),
-
-    graphNodes: [],
-    graphLinks: [],
-
-    errors: [],
-    warnings: []
-  };
-}
-
-
-function isCurrentSession(session) {
-  return (
-    session.id === runtime.activeSessionId
-  );
-}
-
-
-/* ============================================================
- * Rendering
- * ============================================================ */
-
-function clearElement(element) {
-  while (element.firstChild) {
-    element.removeChild(element.firstChild);
-  }
-}
-
-
-function createElement(tag, {
-  className,
-  text,
-  id
-} = {}) {
-  const element = document.createElement(tag);
-
-  if (className) {
-    element.className = className;
-  }
-
-  if (id) {
-    element.id = id;
-  }
-
-  if (text !== undefined) {
-    element.textContent = text;
-  }
-
-  return element;
-}
-
-
-function renderHeader(username) {
-  clearElement(result);
-
-  const header = createElement("h2", {
-    text: `Search Results for: ${username}`
-  });
-
-  const status = createElement("div", {
-    id: "searchStatus",
-    className: "search-status",
-    text: "Initializing..."
-  });
-
-  const local = createElement("div", {
-    id: "localProfile"
-  });
-
-  const dynamic = createElement("div", {
-    id: "dynamicProfile"
-  });
-
-  result.append(
-    header,
-    status,
-    local,
-    dynamic
-  );
-
-  return {
-    status,
-    local,
-    dynamic
-  };
-}
-
-
-function setStatus(statusElement, message, type = "normal") {
-  statusElement.textContent = message;
-  statusElement.dataset.status = type;
-}
-
-
-function renderError(container, title, error) {
-  const section = createElement("section", {
-    className: "error"
-  });
-
-  const heading = createElement("h3", {
-    text: title
-  });
-
-  const message = createElement("p", {
-    text: error?.message || String(error)
-  });
-
-  section.append(heading, message);
-  container.appendChild(section);
-}
-
-
-function renderDebug(container, keywords) {
-  if (!CONFIG.debug) return;
-
-  const section = createElement("section", {
-    className: "debug"
-  });
-
-  const heading = createElement("h3", {
-    text: "All Keywords"
-  });
-
-  const pre = createElement("pre", {
-    text: JSON.stringify(keywords, null, 2)
-  });
-
-  section.append(heading, pre);
-  container.appendChild(section);
-}
-
-
-/* ============================================================
- * Fetching
- * ============================================================ */
-
-async function fetchText(url, {
-  signal,
-  timeout = CONFIG.profileTimeout,
-  cache = false
-} = {}) {
-
-  if (cache && runtime.profileCache.has(url)) {
-    return runtime.profileCache.get(url);
-  }
-
-  const request = fetch(url, {
-    method: "GET",
-    credentials: "same-origin",
-    cache: "no-store",
-    signal,
-
-    headers: {
-      "Accept": "text/html,text/plain;q=0.9"
-    }
-  });
-
-  const response = await withTimeout(
-    request,
-    timeout,
-    signal
-  );
-
-  throwIfAborted(signal);
-
-  if (!response.ok) {
-    throw new Error(
-      `HTTP ${response.status} ${response.statusText}`
-    );
-  }
-
-  const contentType =
-    response.headers.get("content-type") || "";
-
-  /*
-   * Do not blindly inject arbitrary responses into the page.
-   */
-  if (
-    !contentType.includes("text/html") &&
-    !contentType.includes("text/plain")
-  ) {
-    throw new Error(
-      `Unexpected response type: ${contentType || "unknown"}`
-    );
-  }
-
-  const text = await response.text();
-
-  if (cache) {
-    runtime.profileCache.set(url, text);
-  }
-
-  return text;
-}
-
-
-async function loadLocalProfile(username, signal) {
-  const encodedUsername = encodeURIComponent(username);
-
-  const url =
-    `${CONFIG.profileDirectory}${encodedUsername}.html`;
-
-  return fetchText(url, {
-    signal,
-    timeout: CONFIG.profileTimeout,
-    cache: true
-  });
-}
-
-
-/* ============================================================
- * Safe profile insertion
- * ============================================================ */
-
-function sanitizeProfileHTML(html) {
-  /*
-   * IMPORTANT:
-   *
-   * This uses DOMParser rather than directly assigning the
-   * fetched document to innerHTML.
-   *
-   * For truly untrusted remote HTML, use a dedicated sanitizer
-   * such as DOMPurify. This basic sanitizer removes the most
-   * dangerous executable elements/attributes.
-   */
-
-  const parser = new DOMParser();
-  const documentFragment = parser.parseFromString(
-    html,
-    "text/html"
-  );
-
-  const forbidden = [
-    "script",
-    "iframe",
-    "object",
-    "embed",
-    "form",
-    "base",
-    "meta",
-    "link"
-  ];
-
-  for (const tag of forbidden) {
-    documentFragment
-      .querySelectorAll(tag)
-      .forEach(element => element.remove());
-  }
-
-  /*
-   * Remove inline event handlers.
-   *
-   * Example:
-   *   onclick=""
-   *   onload=""
-   *   onerror=""
-   */
-  documentFragment
-    .querySelectorAll("*")
-    .forEach(element => {
-      for (const attribute of [...element.attributes]) {
-        if (
-          attribute.name.toLowerCase().startsWith("on")
-        ) {
-          element.removeAttribute(attribute.name);
-        }
-      }
-    });
-
-  return documentFragment.body;
-}
-
-
-function renderLocalProfile(container, html) {
-  clearElement(container);
-
-  const sanitized = sanitizeProfileHTML(html);
-
-  /*
-   * Import only the body contents.
-   */
-  for (const node of [...sanitized.childNodes]) {
-    container.appendChild(node);
-  }
-}
-
-
-/* ============================================================
- * Dynamic module loader
- * ============================================================ */
-
-async function importModule(file, signal) {
-  throwIfAborted(signal);
-
-  if (runtime.moduleCache.has(file)) {
-    return runtime.moduleCache.get(file);
-  }
-
-  /*
-   * Only allow local module filenames.
-   */
-  if (!/^[a-zA-Z0-9._-]+\.js$/.test(file)) {
-    throw new Error(`Invalid module filename: ${file}`);
-  }
-
-  const moduleURL =
-    `${CONFIG.moduleDirectory}${encodeURIComponent(file)}`;
-
-  try {
-    const promise = import(moduleURL);
-
-    const module = await withTimeout(
-      promise,
-      CONFIG.moduleTimeout,
-      signal
-    );
-
-    throwIfAborted(signal);
-
-    runtime.moduleCache.set(file, module);
-
-    return module;
-
-  } catch (error) {
-    console.error(
-      `Module load failed: ${file}`,
-      error
-    );
-
-    throw new Error(
-      `Unable to load analysis module "${file}".`,
-      { cause: error }
-    );
-  }
-}
-
-
-/* ============================================================
- * Module validation
- * ============================================================ */
-
-const REQUIRED_MODULES = [
-  "extractKeywords",
-  "fetchGitHubKeywords",
-  "detectAliases",
-  "buildFingerprint",
-  "inferPersona",
-  "displayFingerprint",
-  "buildGraph",
-  "renderGraph"
-];
-
-
-function validateModule(mod) {
-  const missing = REQUIRED_MODULES.filter(
-    name => typeof mod[name] !== "function"
-  );
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Analysis module is missing: ${missing.join(", ")}`
-    );
-  }
-}
-
-
-/* ============================================================
- * Module execution
- * ============================================================ */
-
-async function executeModuleStep(
-  session,
-  name,
-  fn,
-  {
-    signal,
-    required = true
-  } = {}
-) {
-
-  throwIfAborted(signal);
-
-  try {
-    const result = await fn();
-
-    throwIfAborted(signal);
-
-    return result;
-
-  } catch (error) {
-
-    if (isAbortError(error)) {
-      throw error;
+let currentSearchId = 0;
+
+/**
+ * Load an ES module from ./modues/.
+ *
+ * Uses import.meta.url so the path is resolved relative to this script,
+ * rather than relying on the document's current URL.
+ */
+async function importModule(file) {
+    if (moduleCache.has(file)) {
+        return moduleCache.get(file);
     }
 
-    session.errors.push({
-      module: name,
-      error
-    });
+    const url = new URL(`./modues/${file}`, import.meta.url);
 
-    console.error(
-      `Analysis step failed: ${name}`,
-      error
-    );
+    console.debug(`[OIST] Loading ${url.href}`);
 
-    if (required) {
-      throw new Error(
-        `Analysis step "${name}" failed.`,
-        { cause: error }
-      );
-    }
-
-    session.warnings.push(
-      `${name} failed and was skipped.`
-    );
-
-    return undefined;
-  }
-}
-
-
-/* ============================================================
- * Analysis pipeline
- * ============================================================ */
-
-async function runModules(
-  session,
-  {
-    dynamic,
-    local,
-    status,
-    signal
-  }
-) {
-
-  const mod = await importModule(
-    CONFIG.moduleFile,
-    signal
-  );
-
-  validateModule(mod);
-
-  throwIfAborted(signal);
-
-  const keywords =
-    session.keywordCache;
-
-  /*
-   * Local profile extraction
-   */
-  if (local.textContent?.trim()) {
-    setStatus(
-      status,
-      "Extracting profile data..."
-    );
-
-    await executeModuleStep(
-      session,
-      "extractKeywords",
-      () => mod.extractKeywords(
-        local.textContent,
-        session.username,
-        keywords
-      ),
-      { signal }
-    );
-  }
-
-  /*
-   * GitHub keyword discovery
-   */
-  setStatus(
-    status,
-    "Collecting technical indicators..."
-  );
-
-  await executeModuleStep(
-    session,
-    "fetchGitHubKeywords",
-    () => mod.fetchGitHubKeywords(
-      session.username
-    ),
-    {
-      signal,
-      required: false
-    }
-  );
-
-  /*
-   * Alias detection
-   */
-  setStatus(
-    status,
-    "Analyzing aliases..."
-  );
-
-  await executeModuleStep(
-    session,
-    "detectAliases",
-    () => mod.detectAliases(
-      session.username
-    ),
-    {
-      signal,
-      required: false
-    }
-  );
-
-  /*
-   * Fingerprinting
-   */
-  setStatus(
-    status,
-    "Building technical fingerprint..."
-  );
-
-  await executeModuleStep(
-    session,
-    "buildFingerprint",
-    () => mod.buildFingerprint(
-      session.username,
-      keywords
-    ),
-    { signal }
-  );
-
-  /*
-   * Persona inference
-   */
-  setStatus(
-    status,
-    "Generating analytical profile..."
-  );
-
-  await executeModuleStep(
-    session,
-    "inferPersona",
-    () => mod.inferPersona(
-      keywords,
-      dynamic
-    ),
-    {
-      signal,
-      required: false
-    }
-  );
-
-  /*
-   * Fingerprint rendering
-   */
-  await executeModuleStep(
-    session,
-    "displayFingerprint",
-    () => mod.displayFingerprint(
-      dynamic
-    ),
-    {
-      signal,
-      required: false
-    }
-  );
-
-  /*
-   * Graph construction
-   */
-  setStatus(
-    status,
-    "Building identity graph..."
-  );
-
-  await executeModuleStep(
-    session,
-    "buildGraph",
-    () => mod.buildGraph(
-      session.username
-    ),
-    {
-      signal,
-      required: false
-    }
-  );
-
-  /*
-   * Graph rendering
-   */
-  await executeModuleStep(
-    session,
-    "renderGraph",
-    () => mod.renderGraph(),
-    {
-      signal,
-      required: false
-    }
-  );
-
-  renderDebug(
-    dynamic,
-    keywords
-  );
-
-  return session;
-}
-
-
-/* ============================================================
- * Search controller
- * ============================================================ */
-
-async function search(username) {
-
-  const validation =
-    validateUsername(username);
-
-  if (!validation.valid) {
-    throw new Error(validation.reason);
-  }
-
-  /*
-   * Cancel previous search.
-   */
-  runtime.activeController?.abort();
-
-  const controller =
-    new AbortController();
-
-  runtime.activeController =
-    controller;
-
-  const signal =
-    controller.signal;
-
-  const session =
-    createSearchSession(username);
-
-  runtime.activeSessionId =
-    session.id;
-
-  runtime.busy = true;
-
-  const ui =
-    renderHeader(username);
-
-  setStatus(
-    ui.status,
-    "Loading profile..."
-  );
-
-  try {
-
-    /*
-     * Load local profile.
-     */
     try {
+        // Check the resource first. This makes path/server errors obvious.
+        const response = await fetch(url, {
+            cache: "no-store"
+        });
 
-      const html =
-        await loadLocalProfile(
-          username,
-          signal
-        );
-
-      throwIfAborted(signal);
-
-      renderLocalProfile(
-        ui.local,
-        html
-      );
-
-    } catch (error) {
-
-      if (isAbortError(error)) {
-        throw error;
-      }
-
-      session.warnings.push(
-        `Local profile unavailable: ${error.message}`
-      );
-
-      renderError(
-        ui.local,
-        "Local profile unavailable",
-        error
-      );
-    }
-
-    throwIfAborted(signal);
-
-    /*
-     * Make sure this isn't an old search.
-     */
-    if (!isCurrentSession(session)) {
-      return;
-    }
-
-    await runModules(
-      session,
-      {
-        dynamic: ui.dynamic,
-        local: ui.local,
-        status: ui.status,
-        signal
-      }
-    );
-
-    throwIfAborted(signal);
-
-    if (!isCurrentSession(session)) {
-      return;
-    }
-
-    const elapsed =
-      Math.round(
-        performance.now() -
-        session.startedAt
-      );
-
-    setStatus(
-      ui.status,
-      `Analysis complete in ${elapsed} ms.`
-    );
-
-    /*
-     * Display non-fatal warnings.
-     */
-    if (session.warnings.length > 0) {
-
-      const warning = createElement(
-        "section",
-        {
-          className: "warnings"
+        if (!response.ok) {
+            throw new Error(
+                `Failed to fetch ${url.href}: HTTP ${response.status} ${response.statusText}`
+            );
         }
-      );
 
-      warning.appendChild(
-        createElement(
-          "h3",
-          {
-            text: "Analysis Warnings"
-          }
-        )
-      );
+        const source = await response.text();
 
-      const list =
-        createElement("ul");
+        if (!source.trim()) {
+            throw new Error(`Module is empty: ${url.href}`);
+        }
 
-      for (const message of session.warnings) {
-        list.appendChild(
-          createElement(
-            "li",
-            {
-              text: message
-            }
-          )
+        console.debug(`[OIST] Fetched ${source.length} bytes`);
+
+        const mod = await import(`${url.href}?v=${Date.now()}`);
+
+        const requiredExports = [
+            "extractKeywords",
+            "fetchGitHubKeywords",
+            "detectAliases",
+            "buildFingerprint",
+            "inferPersona",
+            "displayFingerprint",
+            "buildGraph",
+            "renderGraph"
+        ];
+
+        const missing = requiredExports.filter(
+            name => typeof mod[name] !== "function"
         );
-      }
 
-      warning.appendChild(list);
+        if (missing.length) {
+            throw new Error(
+                `OIST.js loaded, but is missing exports: ${missing.join(", ")}`
+            );
+        }
 
-      ui.dynamic.appendChild(
-        warning
-      );
+        console.debug(
+            "[OIST] Loaded successfully:",
+            Object.keys(mod)
+        );
+
+        moduleCache.set(file, mod);
+        return mod;
+
+    } catch (err) {
+        console.error(`[OIST] Failed to load ${url.href}`, err);
+
+        // Do NOT return {}.
+        // Returning an empty object hides the actual module failure.
+        throw err;
+    }
+}
+
+/**
+ * Reset all search-specific state.
+ */
+function resetState() {
+    state.keywordCache = Object.create(null);
+    state.fingerprints = Object.create(null);
+    state.confidence = Object.create(null);
+    state.aliasCandidates = new Set();
+    state.graphNodes = [];
+    state.graphLinks = [];
+}
+
+/**
+ * Run the OIST analysis pipeline.
+ */
+async function runModules(user, searchId) {
+    const dynamic = document.getElementById("dynamicProfile");
+    const local = document.getElementById("localProfile");
+
+    if (!dynamic) {
+        throw new Error("Missing #dynamicProfile");
     }
 
-  } catch (error) {
+    const mod = await importModule("OIST.js");
 
-    if (isAbortError(error)) {
-      return;
+    // A newer search may have started while the module was loading.
+    if (searchId !== currentSearchId) {
+        console.debug("[OIST] Search superseded; aborting old run.");
+        return;
     }
 
-    console.error(
-      "Search failed:",
-      error
+    const keywords = state.keywordCache[user] ??= Object.create(null);
+
+    /*
+     * Extract keywords from the locally stored profile.
+     */
+    if (local?.textContent?.trim()) {
+        mod.extractKeywords(
+            local.textContent,
+            user,
+            keywords
+        );
+    }
+
+    /*
+     * GitHub enrichment.
+     *
+     * OIST.js should return/update the keyword object.
+     */
+    const githubKeywords = await mod.fetchGitHubKeywords(
+        user,
+        keywords
     );
 
-    if (isCurrentSession(session)) {
-
-      setStatus(
-        ui.status,
-        "Search failed.",
-        "error"
-      );
-
-      renderError(
-        ui.dynamic,
-        "Analysis failed",
-        error
-      );
+    if (githubKeywords && typeof githubKeywords === "object") {
+        Object.assign(keywords, githubKeywords);
     }
 
-  } finally {
-
-    if (
-      runtime.activeController === controller
-    ) {
-      runtime.activeController = null;
-      runtime.busy = false;
+    if (searchId !== currentSearchId) {
+        return;
     }
-  }
+
+    /*
+     * Alias analysis.
+     */
+    const aliases = mod.detectAliases(
+        user,
+        state
+    );
+
+    if (aliases instanceof Set) {
+        aliases.forEach(alias => {
+            state.aliasCandidates.add(alias);
+        });
+    } else if (Array.isArray(aliases)) {
+        aliases.forEach(alias => {
+            state.aliasCandidates.add(alias);
+        });
+    }
+
+    /*
+     * Fingerprint.
+     */
+    const fingerprint = mod.buildFingerprint(
+        user,
+        keywords,
+        state
+    );
+
+    if (fingerprint !== undefined) {
+        state.fingerprints[user] = fingerprint;
+    }
+
+    /*
+     * Persona inference.
+     */
+    mod.inferPersona(
+        keywords,
+        dynamic,
+        state
+    );
+
+    /*
+     * Fingerprint display.
+     */
+    mod.displayFingerprint(
+        dynamic,
+        state.fingerprints[user]
+    );
+
+    /*
+     * Graph construction.
+     */
+    mod.buildGraph(
+        user,
+        state
+    );
+
+    /*
+     * Render graph.
+     */
+    mod.renderGraph(
+        dynamic,
+        state
+    );
+
+    /*
+     * Debug information.
+     *
+     * Escape it before inserting into HTML.
+     */
+    const debug = document.createElement("section");
+
+    const heading = document.createElement("h3");
+    heading.textContent = "All Keywords";
+
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(keywords, null, 2);
+
+    debug.appendChild(heading);
+    debug.appendChild(pre);
+
+    dynamic.appendChild(debug);
 }
 
+/**
+ * Load the local profile.
+ */
+async function loadLocalProfile(user) {
+    const local = document.getElementById("localProfile");
 
-/* ============================================================
- * Event handling
- * ============================================================ */
+    if (!local) {
+        throw new Error("Missing #localProfile");
+    }
 
-async function handleSearch(event) {
+    const url = `individual/${encodeURIComponent(user)}.html`;
 
-  event?.preventDefault();
+    try {
+        const res = await fetch(url, {
+            cache: "no-store"
+        });
 
-  const username =
-    normalizeUsername(input.value);
+        if (res.ok) {
+            local.innerHTML = await res.text();
+            return true;
+        }
 
-  if (!username) {
-    input.focus();
-    return;
-  }
+        if (res.status === 404) {
+            local.innerHTML = `
+                <p>
+                    No local profile was found for
+                    <strong>${escapeHTML(user)}</strong>.
+                </p>
+            `;
 
-  btn.disabled = true;
-  input.disabled = true;
+            return false;
+        }
 
-  try {
-    await search(username);
-  } finally {
-    btn.disabled = false;
-    input.disabled = false;
-  }
+        throw new Error(
+            `HTTP ${res.status} ${res.statusText}`
+        );
+
+    } catch (err) {
+        console.warn(
+            `[Search] Local profile failed for "${user}":`,
+            err
+        );
+
+        local.innerHTML = `
+            <p class="risk-high">
+                Failed to load local profile.
+            </p>
+            <pre>${escapeHTML(err.message)}</pre>
+        `;
+
+        return false;
+    }
 }
 
+/**
+ * Prevent user-controlled values from becoming HTML.
+ */
+function escapeHTML(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
 
-btn.addEventListener(
-  "click",
-  handleSearch
-);
+/**
+ * Perform a search.
+ */
+async function searchUser() {
+    const user = input.value.trim();
 
+    if (!user) {
+        return;
+    }
 
-input.addEventListener(
-  "keydown",
-  event => {
+    const searchId = ++currentSearchId;
+
+    resetState();
+
+    result.innerHTML = `
+        <h2>Search Results for: ${escapeHTML(user)}</h2>
+        <div id="localProfile"></div>
+        <div id="dynamicProfile">
+            <p>Loading analysis...</p>
+        </div>
+    `;
+
+    btn.disabled = true;
+
+    try {
+        await loadLocalProfile(user);
+
+        if (searchId !== currentSearchId) {
+            return;
+        }
+
+        await runModules(user, searchId);
+
+    } catch (err) {
+        console.error("[Search] Analysis failed:", err);
+
+        const dynamic = document.getElementById("dynamicProfile");
+
+        if (dynamic && searchId === currentSearchId) {
+            dynamic.innerHTML = `
+                <section>
+                    <h2>Analysis Failed</h2>
+                    <p class="risk-high">
+                        Unable to load the OIST analysis module.
+                    </p>
+                    <pre>${escapeHTML(
+                        err instanceof Error
+                            ? err.message
+                            : String(err)
+                    )}</pre>
+                </section>
+            `;
+        }
+
+    } finally {
+        if (searchId === currentSearchId) {
+            btn.disabled = false;
+        }
+    }
+}
+
+/**
+ * Search button.
+ */
+btn.addEventListener("click", searchUser);
+
+/**
+ * Enter key support.
+ */
+input.addEventListener("keydown", event => {
     if (event.key === "Enter") {
-      handleSearch(event);
+        event.preventDefault();
+        searchUser();
     }
-
-    if (event.key === "Escape") {
-      runtime.activeController?.abort();
-    }
-  }
-);
+});
