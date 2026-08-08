@@ -1,22 +1,202 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Unified OSINT Search</title>
-<script src="https://d3js.org/d3.v7.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Unified OSINT Search</title>
+
+  <!-- D3 must load before search.js executes -->
+
+  <script
+    src="https://d3js.org/d3.v7.min.js"
+    crossorigin="anonymous">
+  </script>
+
+  <style>
+    :root {
+      --bg: #0b0e13;
+      --panel: #121722;
+      --text: #e6e8ee;
+      --muted: #9aa3b2;
+      --accent: #7aa2ff;
+      --border: #1f2937;
+      --danger: #f28d8d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      font-family:
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    #searchBar {
+      display: flex;
+      gap: 10px;
+      max-width: 700px;
+      margin-bottom: 24px;
+    }
+
+    #inputSearch {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 14px;
+
+      background: var(--panel);
+      color: var(--text);
+
+      border: 1px solid var(--border);
+      border-radius: 8px;
+
+      font: inherit;
+    }
+
+    #inputSearch:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    #searchBtn {
+      padding: 12px 18px;
+
+      background: var(--accent);
+      color: #080b10;
+
+      border: 0;
+      border-radius: 8px;
+
+      font: inherit;
+      font-weight: 700;
+
+      cursor: pointer;
+    }
+
+    #searchBtn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #result {
+      width: 100%;
+      max-width: 1100px;
+    }
+
+    #localProfile,
+    #dynamicProfile {
+      width: 100%;
+    }
+
+    #dynamicProfile section,
+    #localProfile section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    #dynamicProfile h2,
+    #dynamicProfile h3,
+    #localProfile h2,
+    #localProfile h3 {
+      margin-top: 0;
+    }
+
+    #dynamicProfile svg {
+      display: block;
+      width: 100%;
+      max-width: 900px;
+      min-height: 320px;
+
+      color: var(--text);
+
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 8px;
+    }
+
+    pre {
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .error {
+      padding: 16px;
+      margin-bottom: 24px;
+
+      background: var(--panel);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+
+      color: var(--danger);
+    }
+
+    .loading {
+      color: var(--muted);
+    }
+  </style>
+
 </head>
+
 <body>
 
-<h1>OSINT / WHOIS Search</h1>
-<input id="inputSearch" type="text" placeholder="Username">
-<button id="searchBtn">Search</button>
+  <h1>OSINT / WHOIS Search</h1>
 
-<div id="result">
-  <div id="localProfile"></div>
-  <div id="dynamicProfile"></div>
-</div>
+  <div id="searchBar">
+    <input
+      id="inputSearch"
+      type="text"
+      placeholder="Username"
+      autocomplete="off"
+      spellcheck="false"
+      aria-label="Username"
+    >
 
-<script type="module" src="search.js"></script>
+```
+<button
+  id="searchBtn"
+  type="button">
+  Search
+</button>
+```
+
+  </div>
+
+  <main id="result" aria-live="polite">
+    <div id="localProfile"></div>
+    <div id="dynamicProfile"></div>
+  </main>
+
+  <!--
+    Keep this AFTER D3.
+    search.js is an ES module and imports:
+      ./modues/OIST.js
+
+    OIST.js expects D3 to already exist as window.d3.
+  -->
+
+  <script
+    type="module"
+    src="./search.js">
+  </script>
+
 </body>
 </html>
