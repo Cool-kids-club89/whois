@@ -1,196 +1,195 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Krynet</title>
-</head>
-<img
-    src="https://github.com/Cool-kids-club89/whois/blob/main/image0.png?raw=true"
-    alt="Krynet UI"
-    style="
-        display:block;
-        max-width:100%;
-        height:auto;
-        margin:24px auto;
-    "
->
-<body>
-    <div id="app">Loading...</div>
+<script>
+(async () => {
+    const API =
+        "https://raw.githubusercontent.com/Krynet-LLC/Preview/refs/heads/main";
 
-    <script>
-    (async () => {
-        const API =
-            "https://raw.githubusercontent.com/Krynet-LLC/Preview/refs/heads/main";
+    const KRYNET_IMAGE =
+        "https://github.com/Cool-kids-club89/whois/blob/main/image0.png?raw=true";
 
-        async function getFile(path) {
-            const url = `${API}/${path}`;
+    async function getFile(path) {
+        const url = `${API}/${path}`;
 
-            const res = await fetch(url, {
-                cache: "no-cache"
-            });
+        const res = await fetch(url, {
+            cache: "no-cache"
+        });
 
-            if (!res.ok) {
-                throw new Error(`${path}: HTTP ${res.status}`);
-            }
-
-            return await res.text();
+        if (!res.ok) {
+            throw new Error(`${path}: HTTP ${res.status}`);
         }
 
-        function escapeHtml(str) {
-            return String(str).replace(/[&<>'"]/g, tag => ({
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                "'": "&#39;",
-                '"': "&quot;"
-            }[tag]));
-        }
+        return await res.text();
+    }
 
-        try {
-            /*
-             * 1. CSS
-             */
-            const css = await getFile("styles.css");
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>'"]/g, tag => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            "'": "&#39;",
+            '"': "&quot;"
+        }[tag]));
+    }
 
-            const style = document.createElement("style");
-            style.textContent = css;
-            document.head.appendChild(style);
+    try {
+        /*
+         * 1. CSS
+         */
+        const css = await getFile("styles.css");
 
-
-            /*
-             * 2. HTML
-             */
-            const html = await getFile("index.html");
-
-            const doc = new DOMParser()
-                .parseFromString(html, "text/html");
-
-            /*
-             * Remove scripts from index.html.
-             * We will load the JavaScript ourselves.
-             */
-            doc.querySelectorAll("script").forEach(script => {
-                script.remove();
-            });
-
-            /*
-             * Copy body content.
-             */
-            document.body.innerHTML = doc.body.innerHTML;
+        const style = document.createElement("style");
+        style.textContent = css;
+        document.head.appendChild(style);
 
 
-            /*
-             * 3. Load java.js
-             *
-             * IMPORTANT:
-             * java.js expects config.json to be available at
-             * "./config.json".
-             *
-             * We therefore provide config.json before executing
-             * java.js by rewriting its fetch call below.
-             */
-            let js = await getFile("java.js");
+        /*
+         * 2. HTML
+         */
+        const html = await getFile("index.html");
 
-            /*
-             * Change:
-             *
-             * fetch('./config.json')
-             *
-             * into:
-             *
-             * fetch(GitHub config URL)
-             */
-            const configUrl =
-                `${API}/config.json`;
+        const doc = new DOMParser()
+            .parseFromString(html, "text/html");
 
-            js = js.replace(
-                /fetch\s*\(\s*['"`]\.\/config\.json['"`]\s*,?/,
-                `fetch("${configUrl}",`
+        /*
+         * Remove scripts from index.html.
+         * We load JavaScript ourselves.
+         */
+        doc.querySelectorAll("script").forEach(script => {
+            script.remove();
+        });
+
+        /*
+         * Copy body content.
+         */
+        document.body.innerHTML = doc.body.innerHTML;
+
+
+        /*
+         * 2.5 Add image0.png
+         */
+        const imageWrapper = document.createElement("div");
+
+        imageWrapper.style.cssText = `
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 24px 0;
+        `;
+
+        const image = document.createElement("img");
+
+        image.src = KRYNET_IMAGE;
+        image.alt = "Krynet UI";
+        image.loading = "lazy";
+        image.decoding = "async";
+
+        image.style.cssText = `
+            display: block;
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        `;
+
+        imageWrapper.appendChild(image);
+        document.body.appendChild(imageWrapper);
+
+
+        /*
+         * 3. Load java.js
+         *
+         * java.js expects config.json at ./config.json.
+         * Rewrite that request to the GitHub-hosted config.
+         */
+        let js = await getFile("java.js");
+
+        const configUrl =
+            `${API}/config.json`;
+
+        js = js.replace(
+            /fetch\s*\(\s*['"`]\.\/config\.json['"`]\s*,?/,
+            `fetch("${configUrl}",`
+        );
+
+        /*
+         * Execute java.js.
+         */
+        const mainScript = document.createElement("script");
+
+        mainScript.textContent = js;
+
+        document.body.appendChild(mainScript);
+
+
+        /*
+         * 4. Re-execute any non-java.js scripts
+         * from index.html.
+         */
+        const originalScripts =
+            Array.from(
+                new DOMParser()
+                    .parseFromString(html, "text/html")
+                    .querySelectorAll("script")
             );
 
-            /*
-             * Execute java.js.
-             */
-            const mainScript = document.createElement("script");
-
-            mainScript.textContent = js;
-
-            document.body.appendChild(mainScript);
-
+        for (const oldScript of originalScripts) {
 
             /*
-             * 4. Re-execute any non-external scripts
-             * from index.html if needed.
-             *
-             * External scripts are intentionally handled
-             * separately because relative src paths may point
-             * to the wrong host.
+             * java.js was already loaded above.
              */
-            const originalScripts =
-                Array.from(
-                    new DOMParser()
-                        .parseFromString(html, "text/html")
-                        .querySelectorAll("script")
-                );
-
-            for (const oldScript of originalScripts) {
-
-                /*
-                 * Skip java.js if index.html already references it.
-                 */
-                if (
-                    oldScript.src &&
-                    oldScript.src.includes("java.js")
-                ) {
-                    continue;
-                }
-
-                const newScript =
-                    document.createElement("script");
-
-                if (oldScript.src) {
-                    /*
-                     * Convert relative script URLs to GitHub URLs.
-                     */
-                    let src = oldScript.getAttribute("src");
-
-                    if (
-                        src &&
-                        !src.startsWith("http://") &&
-                        !src.startsWith("https://") &&
-                        !src.startsWith("//")
-                    ) {
-                        src = `${API}/${src.replace(/^\.?\//, "")}`;
-                    }
-
-                    newScript.src = src;
-                    newScript.async = false;
-
-                } else {
-                    newScript.textContent =
-                        oldScript.textContent;
-                }
-
-                document.body.appendChild(newScript);
+            if (
+                oldScript.src &&
+                oldScript.src.includes("java.js")
+            ) {
+                continue;
             }
 
-        } catch (err) {
-            console.error("Krynet error:", err);
+            const newScript =
+                document.createElement("script");
 
-            document.body.innerHTML = `
-                <pre style="
-                    white-space: pre-wrap;
-                    padding: 20px;
-                    color: #ff5555;
-                    background: #111;
-                    font-family: monospace;
-                ">Krynet API error:
+            if (oldScript.src) {
 
-${escapeHtml(err?.message || String(err))}</pre>
-            `;
+                let src =
+                    oldScript.getAttribute("src");
+
+                /*
+                 * Convert relative script paths
+                 * to GitHub-hosted paths.
+                 */
+                if (
+                    src &&
+                    !src.startsWith("http://") &&
+                    !src.startsWith("https://") &&
+                    !src.startsWith("//")
+                ) {
+                    src =
+                        `${API}/${src.replace(/^\.?\//, "")}`;
+                }
+
+                newScript.src = src;
+                newScript.async = false;
+
+            } else {
+                newScript.textContent =
+                    oldScript.textContent;
+            }
+
+            document.body.appendChild(newScript);
         }
-    })();
-    </script>
-</body>
-</html>
+
+    } catch (err) {
+        console.error("Krynet error:", err);
+
+        document.body.innerHTML = `
+            <pre style="
+                white-space: pre-wrap;
+                padding: 20px;
+                color: #ff5555;
+                background: #111;
+                font-family: monospace;
+            ">Krynet API error:
+${escapeHtml(err?.message || String(err))}
+</pre>
+        `;
+    }
+})();
+</script>
