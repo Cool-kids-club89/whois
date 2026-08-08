@@ -1,3 +1,5 @@
+"use strict";
+
 const input = document.getElementById("inputSearch");
 const btn = document.getElementById("searchBtn");
 const result = document.getElementById("result");
@@ -13,86 +15,21 @@ const state = {
     graphLinks: []
 };
 
-let currentSearchId = 0;
-
-/**
- * Load an ES module from ./modues/.
- *
- * Uses import.meta.url so the path is resolved relative to this script,
- * rather than relying on the document's current URL.
- */
 async function importModule(file) {
     if (moduleCache.has(file)) {
         return moduleCache.get(file);
     }
 
-    const url = new URL(`./modues/${file}`, import.meta.url);
-
-    console.debug(`[OIST] Loading ${url.href}`);
-
     try {
-        // Check the resource first. This makes path/server errors obvious.
-        const response = await fetch(url, {
-            cache: "no-store"
-        });
-
-        if (!response.ok) {
-            throw new Error(
-                `Failed to fetch ${url.href}: HTTP ${response.status} ${response.statusText}`
-            );
-        }
-
-        const source = await response.text();
-
-        if (!source.trim()) {
-            throw new Error(`Module is empty: ${url.href}`);
-        }
-
-        console.debug(`[OIST] Fetched ${source.length} bytes`);
-
-        const mod = await import(`${url.href}?v=${Date.now()}`);
-
-        const requiredExports = [
-            "extractKeywords",
-            "fetchGitHubKeywords",
-            "detectAliases",
-            "buildFingerprint",
-            "inferPersona",
-            "displayFingerprint",
-            "buildGraph",
-            "renderGraph"
-        ];
-
-        const missing = requiredExports.filter(
-            name => typeof mod[name] !== "function"
-        );
-
-        if (missing.length) {
-            throw new Error(
-                `OIST.js loaded, but is missing exports: ${missing.join(", ")}`
-            );
-        }
-
-        console.debug(
-            "[OIST] Loaded successfully:",
-            Object.keys(mod)
-        );
-
+        const mod = await import(`./modues/${file}`);
         moduleCache.set(file, mod);
         return mod;
-
     } catch (err) {
-        console.error(`[OIST] Failed to load ${url.href}`, err);
-
-        // Do NOT return {}.
-        // Returning an empty object hides the actual module failure.
+        console.error(`[WHOIS] Failed to import ./modues/${file}`, err);
         throw err;
     }
 }
 
-/**
- * Reset all search-specific state.
- */
 function resetState() {
     state.keywordCache = Object.create(null);
     state.fingerprints = Object.create(null);
@@ -102,277 +39,257 @@ function resetState() {
     state.graphLinks = [];
 }
 
-/**
- * Run the OIST analysis pipeline.
- */
-async function runModules(user, searchId) {
-    const dynamic = document.getElementById("dynamicProfile");
-    const local = document.getElementById("localProfile");
+function createResultsShell(user) {
+    result.replaceChildren();
 
-    if (!dynamic) {
-        throw new Error("Missing #dynamicProfile");
+    const heading = document.createElement("h2");
+    heading.textContent = `Search Results for: ${user}`;
+
+    const localProfile = document.createElement("div");
+    localProfile.id = "localProfile";
+
+    const dynamicProfile = document.createElement("div");
+    dynamicProfile.id = "dynamicProfile";
+
+    result.append(
+        heading,
+        localProfile,
+        dynamicProfile
+    );
+
+    return {
+        localProfile,
+        dynamicProfile
+    };
+}
+
+async function loadLocalProfile(user, container) {
+    try {
+        const response = await fetch(
+            `individual/${encodeURIComponent(user)}.html`,
+            {
+                method: "GET",
+                cache: "no-store"
+            }
+        );
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                container.textContent =
+                    "No local profile was found for this identity.";
+            } else {
+                container.textContent =
+                    `Local profile request failed: HTTP ${response.status}.`;
+            }
+
+            return false;
+        }
+
+        const html = await response.text();
+
+        if (!html.trim()) {
+            container.textContent =
+                "The local profile exists but contains no content.";
+
+            return false;
+        }
+
+        container.innerHTML = html;
+        return true;
+
+    } catch (err) {
+        console.warn("[WHOIS] Local profile load failed:", err);
+
+        container.textContent =
+            "Unable to load the local profile.";
+
+        return false;
     }
+}
 
+async function runModules(user, localProfile, dynamicProfile) {
     const mod = await importModule("OIST.js");
 
-    // A newer search may have started while the module was loading.
-    if (searchId !== currentSearchId) {
-        console.debug("[OIST] Search superseded; aborting old run.");
-        return;
-    }
-
-    const keywords = state.keywordCache[user] ??= Object.create(null);
+    const keywords =
+        state.keywordCache[user] ??= Object.create(null);
 
     /*
-     * Extract keywords from the locally stored profile.
+     * Local profile analysis.
      */
-    if (local?.textContent?.trim()) {
+    if (localProfile?.textContent?.trim()) {
         mod.extractKeywords(
-            local.textContent,
+            localProfile.textContent,
             user,
             keywords
         );
     }
 
     /*
-     * GitHub enrichment.
+     * GitHub analysis.
      *
-     * OIST.js should return/update the keyword object.
+     * The keyword store is explicitly passed in so
+     * OIST and script.js always operate on the same object.
      */
-    const githubKeywords = await mod.fetchGitHubKeywords(
+    await mod.fetchGitHubKeywords(
         user,
         keywords
     );
 
-    if (githubKeywords && typeof githubKeywords === "object") {
-        Object.assign(keywords, githubKeywords);
-    }
-
-    if (searchId !== currentSearchId) {
-        return;
-    }
-
     /*
-     * Alias analysis.
+     * Identity / alias analysis.
      */
-    const aliases = mod.detectAliases(
+    mod.detectAliases(
         user,
-        state
+        state.aliasCandidates
     );
-
-    if (aliases instanceof Set) {
-        aliases.forEach(alias => {
-            state.aliasCandidates.add(alias);
-        });
-    } else if (Array.isArray(aliases)) {
-        aliases.forEach(alias => {
-            state.aliasCandidates.add(alias);
-        });
-    }
 
     /*
      * Fingerprint.
      */
-    const fingerprint = mod.buildFingerprint(
+    mod.buildFingerprint(
         user,
         keywords,
         state
     );
 
-    if (fingerprint !== undefined) {
-        state.fingerprints[user] = fingerprint;
-    }
-
     /*
-     * Persona inference.
+     * Observable content signals.
      */
     mod.inferPersona(
         keywords,
-        dynamic,
+        dynamicProfile
+    );
+
+    /*
+     * Fingerprint UI.
+     */
+    mod.displayFingerprint(
+        dynamicProfile,
+        user,
         state
     );
 
     /*
-     * Fingerprint display.
-     */
-    mod.displayFingerprint(
-        dynamic,
-        state.fingerprints[user]
-    );
-
-    /*
-     * Graph construction.
+     * Graph.
      */
     mod.buildGraph(
         user,
         state
     );
 
-    /*
-     * Render graph.
-     */
     mod.renderGraph(
-        dynamic,
+        dynamicProfile,
         state
     );
 
     /*
      * Debug information.
      *
-     * Escape it before inserting into HTML.
+     * textContent is used instead of innerHTML so keyword
+     * contents cannot inject markup into the page.
      */
     const debug = document.createElement("section");
 
-    const heading = document.createElement("h3");
-    heading.textContent = "All Keywords";
+    const debugHeading = document.createElement("h3");
+    debugHeading.textContent = "All Keywords";
 
     const pre = document.createElement("pre");
-    pre.textContent = JSON.stringify(keywords, null, 2);
+    pre.textContent =
+        JSON.stringify(keywords, null, 2);
 
-    debug.appendChild(heading);
-    debug.appendChild(pre);
+    debug.append(
+        debugHeading,
+        pre
+    );
 
-    dynamic.appendChild(debug);
+    dynamicProfile.appendChild(debug);
 }
 
-/**
- * Load the local profile.
- */
-async function loadLocalProfile(user) {
-    const local = document.getElementById("localProfile");
-
-    if (!local) {
-        throw new Error("Missing #localProfile");
-    }
-
-    const url = `individual/${encodeURIComponent(user)}.html`;
-
-    try {
-        const res = await fetch(url, {
-            cache: "no-store"
-        });
-
-        if (res.ok) {
-            local.innerHTML = await res.text();
-            return true;
-        }
-
-        if (res.status === 404) {
-            local.innerHTML = `
-                <p>
-                    No local profile was found for
-                    <strong>${escapeHTML(user)}</strong>.
-                </p>
-            `;
-
-            return false;
-        }
-
-        throw new Error(
-            `HTTP ${res.status} ${res.statusText}`
-        );
-
-    } catch (err) {
-        console.warn(
-            `[Search] Local profile failed for "${user}":`,
-            err
-        );
-
-        local.innerHTML = `
-            <p class="risk-high">
-                Failed to load local profile.
-            </p>
-            <pre>${escapeHTML(err.message)}</pre>
-        `;
-
-        return false;
-    }
-}
-
-/**
- * Prevent user-controlled values from becoming HTML.
- */
-function escapeHTML(value) {
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-}
-
-/**
- * Perform a search.
- */
-async function searchUser() {
+async function performSearch() {
     const user = input.value.trim();
 
     if (!user) {
         return;
     }
 
-    const searchId = ++currentSearchId;
+    btn.disabled = true;
 
     resetState();
 
-    result.innerHTML = `
-        <h2>Search Results for: ${escapeHTML(user)}</h2>
-        <div id="localProfile"></div>
-        <div id="dynamicProfile">
-            <p>Loading analysis...</p>
-        </div>
-    `;
+    const {
+        localProfile,
+        dynamicProfile
+    } = createResultsShell(user);
 
-    btn.disabled = true;
+    const loading = document.createElement("p");
+    loading.id = "searchStatus";
+    loading.textContent = "Running analysis…";
+
+    dynamicProfile.appendChild(loading);
 
     try {
-        await loadLocalProfile(user);
+        await loadLocalProfile(
+            user,
+            localProfile
+        );
 
-        if (searchId !== currentSearchId) {
-            return;
-        }
+        await runModules(
+            user,
+            localProfile,
+            dynamicProfile
+        );
 
-        await runModules(user, searchId);
+        loading.remove();
 
     } catch (err) {
-        console.error("[Search] Analysis failed:", err);
+        console.error(
+            `[WHOIS] Analysis failed for "${user}":`,
+            err
+        );
 
-        const dynamic = document.getElementById("dynamicProfile");
+        loading.remove();
 
-        if (dynamic && searchId === currentSearchId) {
-            dynamic.innerHTML = `
-                <section>
-                    <h2>Analysis Failed</h2>
-                    <p class="risk-high">
-                        Unable to load the OIST analysis module.
-                    </p>
-                    <pre>${escapeHTML(
-                        err instanceof Error
-                            ? err.message
-                            : String(err)
-                    )}</pre>
-                </section>
-            `;
-        }
+        const errorSection =
+            document.createElement("section");
 
+        const heading =
+            document.createElement("h3");
+
+        heading.textContent =
+            "Analysis Failed";
+
+        const message =
+            document.createElement("p");
+
+        message.textContent =
+            err instanceof Error
+                ? err.message
+                : String(err);
+
+        errorSection.append(
+            heading,
+            message
+        );
+
+        dynamicProfile.prepend(
+            errorSection
+        );
     } finally {
-        if (searchId === currentSearchId) {
-            btn.disabled = false;
-        }
+        btn.disabled = false;
     }
 }
 
-/**
- * Search button.
- */
-btn.addEventListener("click", searchUser);
+btn.addEventListener(
+    "click",
+    performSearch
+);
 
-/**
- * Enter key support.
- */
-input.addEventListener("keydown", event => {
-    if (event.key === "Enter") {
-        event.preventDefault();
-        searchUser();
+input.addEventListener(
+    "keydown",
+    event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            performSearch();
+        }
     }
-});
+);
