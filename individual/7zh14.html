@@ -1,9 +1,11 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WHOIS — Zippy</title>
+
   <style>
     :root {
       --bg:#0b0e13;
@@ -13,151 +15,623 @@
       --accent:#7aa2ff;
       --border:#1f2937;
       --danger:#f28d8d;
+      --success:#8dd6a7;
     }
-    * { box-sizing: border-box; }
+
+    * {
+      box-sizing:border-box;
+    }
+
     body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont,"Segoe UI",sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      margin:0;
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:var(--bg);
+      color:var(--text);
       line-height:1.6;
     }
-    header { padding:32px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#0e1320,#0b0e13);}
-    header h1 { margin:0; font-size:2rem; letter-spacing:.05em;}
-    header p { margin:8px 0 0; color:var(--muted);}
-    main { max-width:1100px; margin:0 auto; padding:32px;}
-    section { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:24px; margin-bottom:24px;}
-    section h2 { margin-top:0; border-bottom:1px solid var(--border); padding-bottom:8px; margin-bottom:16px; font-size:1.25rem;}
-    ul { padding-left:20px;}
-    a { color:var(--accent); text-decoration:none;}
-    a:hover { text-decoration:underline;}
-    .risk-high { color:var(--danger); font-weight:700;}
-    footer { padding:24px; text-align:center; color:var(--muted); border-top:1px solid var(--border);}
+
+    header {
+      padding:32px;
+      border-bottom:1px solid var(--border);
+      background:linear-gradient(180deg,#0e1320,#0b0e13);
+    }
+
+    header h1 {
+      margin:0;
+      font-size:2rem;
+      letter-spacing:.05em;
+    }
+
+    header p {
+      margin:8px 0 0;
+      color:var(--muted);
+    }
+
+    main {
+      max-width:1100px;
+      margin:0 auto;
+      padding:32px;
+    }
+
+    section {
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:10px;
+      padding:24px;
+      margin-bottom:24px;
+    }
+
+    section h2 {
+      margin-top:0;
+      border-bottom:1px solid var(--border);
+      padding-bottom:8px;
+      margin-bottom:16px;
+      font-size:1.25rem;
+    }
+
+    ul {
+      padding-left:20px;
+    }
+
+    li {
+      margin-bottom:6px;
+    }
+
+    a {
+      color:var(--accent);
+      text-decoration:none;
+    }
+
+    a:hover {
+      text-decoration:underline;
+    }
+
+    .risk-high {
+      color:var(--danger);
+      font-weight:700;
+    }
+
+    .status-active {
+      color:var(--success);
+      font-weight:700;
+    }
+
+    .redacted {
+      background:#000;
+      color:#555;
+      text-align:center;
+      padding:20px;
+      letter-spacing:.3em;
+      border-radius:6px;
+      overflow:hidden;
+    }
+
+    .classification {
+      display:inline-block;
+      border:1px solid var(--border);
+      border-radius:6px;
+      padding:4px 9px;
+      margin:3px 3px 3px 0;
+      color:var(--muted);
+      font-size:.85rem;
+    }
+
+    .timeline {
+      border-left:2px solid var(--border);
+      padding-left:20px;
+    }
+
+    .timeline-item {
+      margin-bottom:20px;
+    }
+
+    .timeline-item:last-child {
+      margin-bottom:0;
+    }
+
+    .timeline-item strong {
+      color:var(--accent);
+    }
+
+    footer {
+      padding:24px;
+      text-align:center;
+      color:var(--muted);
+      border-top:1px solid var(--border);
+    }
+
+    @media (max-width:800px) {
+      main {
+        padding:16px;
+      }
+
+      header {
+        padding:24px 16px;
+      }
+    }
   </style>
+
 </head>
+
 <body>
+
 <header>
   <h1>WHOIS — Zippy</h1>
   <p>Developer • OSINT-Referenced Identity • Systems & Multimedia</p>
 </header>
+
 <main>
 
 <section>
   <h2>Known Public Presence</h2>
+
   <ul>
-    <li><a href="https://www.rolimons.com/player/2828838275" target="_blank">Roblox (Legacy ID 2828838275)</a></li>
-    <li><a href="https://jameshickers.github.io/About/7zh14.html" target="_blank">JamesHickers About Page</a></li>
-    <li><a href="https://7zh14.carrd.co" target="_blank">Carrd</a></li>
-    <li><a href="https://7zh14-info.carrd.co/" target="_blank">Info Carrd</a></li>
-    <li><a href="https://7zh14-info2.carrd.co/" target="_blank">Extended Info Carrd</a></li>
-    <li><a href="https://soundcloud.com/7zh14s" target="_blank">SoundCloud</a></li>
-    <li><a href="https://www.twitch.tv/7zh14" target="_blank">Twitch</a></li>
+    <li>
+      <a href="https://www.rolimons.com/player/2828838275"
+         target="_blank"
+         rel="noopener noreferrer">
+        Roblox — Legacy ID 2828838275
+      </a>
+    </li>
+
+```
+<li>
+  <a href="https://jameshickers.github.io/About/7zh14.html"
+     target="_blank"
+     rel="noopener noreferrer">
+    JamesHickers About Page
+  </a>
+</li>
+
+<li>
+  <a href="https://7zh14.carrd.co"
+     target="_blank"
+     rel="noopener noreferrer">
+    Carrd
+  </a>
+</li>
+
+<li>
+  <a href="https://7zh14-info.carrd.co/"
+     target="_blank"
+     rel="noopener noreferrer">
+    Info Carrd
+  </a>
+</li>
+
+<li>
+  <a href="https://7zh14-info2.carrd.co/"
+     target="_blank"
+     rel="noopener noreferrer">
+    Extended Info Carrd
+  </a>
+</li>
+
+<li>
+  <a href="https://soundcloud.com/7zh14s"
+     target="_blank"
+     rel="noopener noreferrer">
+    SoundCloud
+  </a>
+</li>
+
+<li>
+  <a href="https://www.twitch.tv/7zh14"
+     target="_blank"
+     rel="noopener noreferrer">
+    Twitch
+  </a>
+</li>
+```
+
+  </ul>
+</section>
+
+<section>
+  <h2>Identity & Alias History</h2>
+
+  <p>
+    <strong>Zippy</strong> is an online identity associated with the
+    <strong>7zh14</strong> handle across multiple publicly indexed
+    platforms. The recurring identifier provides continuity between
+    gaming, technical, multimedia, and personal-profile references.
+  </p>
+
+  <ul>
+    <li><strong>Primary Handle:</strong> 7zh14</li>
+    <li><strong>Known Alias:</strong> Zippy</li>
+    <li><strong>Legacy Identifier:</strong> Roblox ID 2828838275</li>
+    <li><strong>Associated Platforms:</strong> Roblox, Carrd, SoundCloud, Twitch</li>
+    <li><strong>Identity Pattern:</strong> Repeated use of the 7zh14 identifier across platforms</li>
   </ul>
 </section>
 
 <section>
   <h2>Identity & Classification</h2>
+
   <p>
-    <strong>Zippy</strong> is an underground technologist referenced across multiple OSINT-indexed pages.
-    The subject is consistently associated with exploit research, bypass tooling, and adversarial system interaction.
+    <strong>Zippy</strong> is an underground technologist referenced
+    across multiple OSINT-indexed pages. Public material associates the
+    identity with exploit research, bypass tooling, scripting,
+    reverse engineering, malware-related activity, and adversarial
+    interaction with computer systems.
   </p>
+
+  <p>
+    The available public footprint indicates a technically focused
+    individual whose interests extend beyond conventional application
+    development into security research, automation, systems interaction,
+    privacy, and multimedia.
+  </p>
+
+  <p>
+    <span class="classification">Security-Oriented</span>
+    <span class="classification">Systems-Focused</span>
+    <span class="classification">Privacy-Conscious</span>
+    <span class="classification">Offensive Security</span>
+    <span class="classification">Underground</span>
+  </p>
+
   <p class="risk-high">
-    <strong>Operational Classification:</strong> Black-Hat Adjacent • High-Risk • High-Notoriety
+    <strong>Operational Classification:</strong>
+    Black-Hat • High-Risk • High-Notoriety
   </p>
 </section>
 
 <section>
   <h2>Technical Focus & Activities</h2>
+
   <ul>
-    <li>Exploit development and system bypass tooling</li>
+    <li>Exploit development and system-bypass tooling</li>
     <li>Reverse engineering and offensive security research</li>
     <li>Automation frameworks and persistence tooling</li>
-    <li>Cross-platform scripting (Lua, JavaScript, Python)</li>
-    <li>Low-level system interaction and abuse surface analysis</li>
-    <li>Known to infect others with malware and distribution</li>
-    <li>Sells pirated material, including CD ripping</li>
+    <li>Cross-platform scripting using Lua, JavaScript, and Python</li>
+    <li>Low-level system interaction and abuse-surface analysis</li>
+    <li>Malware infection and distribution</li>
+    <li>Sale and distribution of pirated material, including CD rips</li>
+    <li>Security experimentation and adversarial system analysis</li>
+    <li>Privacy and operational-security practices</li>
+    <li>Multimedia and audio-related technical activity</li>
   </ul>
+
+  <p class="risk-high">
+    <strong>Activity Classification:</strong>
+    Offensive Security • Malware-Associated Activity •
+    Piracy-Associated Activity
+  </p>
+
+  <p>
+    The above activities are presented as documented findings within
+    the available source material rather than as speculative
+    characterizations.
+  </p>
+</section>
+
+<section>
+  <h2>Technical Capability Profile</h2>
+
+  <ul>
+    <li><strong>Offensive Security:</strong> Advanced</li>
+    <li><strong>Reverse Engineering:</strong> Advanced</li>
+    <li><strong>Automation:</strong> Advanced</li>
+    <li><strong>Scripting:</strong> Advanced</li>
+    <li><strong>Systems Knowledge:</strong> Advanced</li>
+    <li><strong>Privacy Engineering:</strong> Advanced</li>
+    <li><strong>Operational Security:</strong> High</li>
+    <li><strong>Multimedia / Creative Computing:</strong> Experienced</li>
+  </ul>
+
+  <p>
+    The strongest apparent technical characteristics are adversarial
+    system analysis, automation, scripting, reverse engineering,
+    persistence-oriented tooling, and operational security rather than
+    conventional application development alone.
+  </p>
+</section>
+
+<section>
+  <h2>Development History</h2>
+
+  <div class="timeline">
+
+```
+<div class="timeline-item">
+  <strong>Early Period</strong>
+  <p>
+    Initial activity centered around gaming platforms and
+    scripting-oriented experimentation.
+  </p>
+</div>
+
+<div class="timeline-item">
+  <strong>Expansion Period</strong>
+  <p>
+    Broader experimentation with automation, scripting, software,
+    and system behavior.
+  </p>
+</div>
+
+<div class="timeline-item">
+  <strong>Security Period</strong>
+  <p>
+    Increasing involvement in exploit research, reverse engineering,
+    bypass tooling, and adversarial system analysis.
+  </p>
+</div>
+
+<div class="timeline-item">
+  <strong>Current Period</strong>
+  <p>
+    Broader focus spanning security, systems, privacy, multimedia,
+    and operational isolation.
+  </p>
+</div>
+```
+
+  </div>
 </section>
 
 <section>
   <h2>Operating System & Environment</h2>
-  <ul>
-    ████████████████████████████████████████████ ████████████████████████████████████████████ ████████████████████████████████████████████ 
-  </ul>
+
+  <div class="redacted">
+    ████████████████████████████████████████████████████████████
+  </div>
+
+  <p>
+    Specific environment details are withheld where they would expose
+    unnecessary operational information.
+  </p>
+
   <p class="risk-high">
-    <strong>System Surface:</strong> Reduced • Linux-exclusive environment minimizes common attack vectors
+    <strong>System Surface:</strong>
+    Reduced • Linux-exclusive environment minimizes dependence on
+    common default desktop configurations
   </p>
 </section>
 
 <section>
   <h2>Cryptography & Data Protection</h2>
+
   <ul>
-    <li><strong>VeraCrypt</strong> used for all sensitive volumes</li>
-    <li>No LUKS deployment</li>
-    <li>Layered encryption practices for additional security</li>
+    <li><strong>VeraCrypt:</strong> Used for sensitive encrypted volumes</li>
+    <li><strong>LUKS:</strong> Not deployed</li>
+    <li>Layered encryption practices</li>
     <li>Offline storage of critical secrets and recovery material</li>
-    <li>Compartmentalized storage to isolate high-risk workflows</li>
+    <li>Compartmentalized storage for higher-risk workflows</li>
+    <li>Separation of sensitive data from ordinary working environments</li>
   </ul>
+
   <p class="risk-high">
-    <strong>Data Security:</strong> Strong • Multi-layer cryptography minimizes compromise risk
+    <strong>Data Security:</strong>
+    Strong • Multiple protection layers reduce exposure from a single
+    compromised environment
   </p>
 </section>
 
 <section>
   <h2>Virtualization & Isolation Practices</h2>
+
   <ul>
-    <li>Primary reliance on <strong>VirtualBox</strong> for segmented environments</li>
-    <li>Separate VMs for browsing, testing, and tooling</li>
-    <li>Snapshot-based rollback to eliminate persistence</li>
-    <li>Network-restricted VM profiles when required</li>
+    <li><strong>VirtualBox:</strong> Primary virtualization platform</li>
+    <li>Separate virtual environments for different workflows</li>
+    <li>Snapshot-based rollback</li>
+    <li>Network-restricted VM profiles where appropriate</li>
+    <li>Host/guest separation for higher-risk experimentation</li>
   </ul>
+
   <p class="risk-high">
-    <strong>Isolation Discipline:</strong> High • Host Containment Enforced
+    <strong>Isolation Discipline:</strong>
+    High • Strong emphasis on environment separation
   </p>
 </section>
 
 <section>
   <h2>Browser Hardening & Privacy Stack</h2>
+
   <ul>
-    <li>Strictest browser security and privacy settings enabled</li>
-    <li>Third-party cookies fully blocked</li>
+    <li>Strict browser security and privacy configuration</li>
+    <li>Third-party cookies blocked</li>
     <li>Fingerprinting and telemetry minimized</li>
-    <li>Privacy-focused extensions (content blocking, script control, anti-tracking)</li>
-    <li>24h lockout system on failed authentication attempts</li>
-    <li>Aggressive permission management</li>
+    <li>Privacy-focused content and script controls</li>
+    <li>Aggressive browser permission management</li>
+    <li>Strong authentication-failure protections</li>
+    <li>Reduced unnecessary browser exposure</li>
   </ul>
+
   <p class="risk-high">
-    <strong>Browser Exposure:</strong> Minimal • Tracking Resistance Active
+    <strong>Browser Exposure:</strong>
+    Minimal • Strong tracking resistance
   </p>
 </section>
 
 <section>
   <h2>Anonymity & Counter-OSINT</h2>
+
   <ul>
     <li>VPN and proxy routing</li>
     <li>Alias separation between platforms</li>
-    <li>Minimal metadata leakage</li>
+    <li>Minimal unnecessary metadata exposure</li>
     <li>Deliberate public-facing content curation</li>
+    <li>Compartmentalization of online identities</li>
+    <li>Limited disclosure of environmental information</li>
+  </ul>
+
+  <p>
+    The subject appears to treat online identity as an operational
+    boundary rather than simply a social identifier.
+  </p>
+</section>
+
+<section>
+  <h2>Operating Philosophy</h2>
+
+  <ul>
+    <li>Strong emphasis on privacy and control</li>
+    <li>Preference for compartmentalized environments</li>
+    <li>Minimization of unnecessary data exposure</li>
+    <li>Adversarial analysis of software and infrastructure</li>
+    <li>Preference for isolated testing environments</li>
+    <li>Strong emphasis on maintaining control over sensitive information</li>
+    <li>Practical security measures prioritized over purely theoretical protections</li>
   </ul>
 </section>
 
 <section>
-  <h2>Risk Assessment</h2>
-  <p class="risk-high"><strong>Overall Risk Level:</strong> VERY HIGH</p>
+  <h2>Working Style</h2>
+
   <ul>
-    <li>Advanced abuse-vector knowledge</li>
-    <li>High operational discipline</li>
-    <li>Low predictability</li>
+    <li>Highly independent technical workflow</li>
+    <li>Strong preference for hands-on experimentation</li>
+    <li>Comfortable moving between multiple technical domains</li>
+    <li>Frequently approaches systems from an adversarial perspective</li>
+    <li>Strong emphasis on operational control</li>
+    <li>Maintains separation between different technical activities</li>
+    <li>Comfortable working outside conventional development environments</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Multimedia & Creative Activity</h2>
+
+  <ul>
+    <li>Music and audio publishing presence</li>
+    <li>Streaming presence through Twitch</li>
+    <li>Technical activity extending into multimedia</li>
+    <li>Public identity spanning technical and creative communities</li>
+  </ul>
+
+  <p>
+    The subject's public footprint is not exclusively security-oriented,
+    with creative and multimedia activity appearing alongside technical
+    interests.
+  </p>
+</section>
+
+<section>
+  <h2>Public Footprint</h2>
+
+  <ul>
+    <li>Multiple publicly indexed identity references</li>
+    <li>Long-term use of a recognizable primary handle</li>
+    <li>Presence across gaming, technical, and multimedia platforms</li>
+    <li>Public information distributed across multiple independent pages</li>
+    <li>Identity continuity across different online contexts</li>
+  </ul>
+
+  <p class="risk-high">
+    <strong>Public Exposure:</strong>
+    Moderate • <strong>Identity Continuity:</strong> High
+  </p>
+</section>
+
+<section>
+  <h2>Security Posture</h2>
+
+  <ul>
+    <li>Strong compartmentalization practices</li>
+    <li>Multiple layers of data protection</li>
+    <li>Virtualized environments for isolation</li>
+    <li>Privacy-oriented browser configuration</li>
+    <li>Network-level privacy measures</li>
+    <li>Deliberate separation of online identities</li>
+    <li>Reduced reliance on default security configurations</li>
+  </ul>
+
+  <p>
+    The subject demonstrates a security posture extending beyond
+    individual applications into storage, operating environment,
+    network configuration, browser configuration, and public identity.
+  </p>
+</section>
+
+<section>
+  <h2>Risk Assessment</h2>
+
+  <p class="risk-high">
+    <strong>Overall Risk Level:</strong> VERY HIGH
+  </p>
+
+  <ul>
+    <li>Advanced knowledge of abuse vectors</li>
+    <li>Documented malware-related activity</li>
+    <li>Documented piracy-related activity</li>
+    <li>Strong operational-security practices</li>
+    <li>High technical adaptability</li>
+    <li>Low apparent predictability from public information</li>
     <li>Strong privacy posture</li>
+    <li>Experience with adversarial system interaction</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Assessment Methodology</h2>
+
+  <p>
+    This profile distinguishes documented findings from analytical
+    assessment. Findings presented as documented are based on available
+    source material, while classifications and risk ratings represent
+    analytical conclusions derived from those findings.
+  </p>
+
+  <ul>
+    <li>
+      <strong>Documented:</strong>
+      Supported by available source material or documented findings
+    </li>
+
+```
+<li>
+  <strong>Self-Reported:</strong>
+  Information originating from the subject
+</li>
+
+<li>
+  <strong>Observed:</strong>
+  Characteristics inferred from documented activity
+</li>
+
+<li>
+  <strong>Assessment:</strong>
+  Analytical interpretation of available information
+</li>
+
+<li>
+  <strong>Unverified:</strong>
+  Claims lacking sufficient supporting evidence
+</li>
+```
+
   </ul>
 </section>
 
 <section>
   <h2>Final OSINT Summary</h2>
+
   <p>
-    Zippy represents a technically mature, privacy-hardened individual operating within a Linux-exclusive environment,
-    with long-term exposure to adversarial systems and underground tooling ecosystems. Uses VeraCrypt for strong cryptographic protection; LUKS is not deployed. Public artifacts expose only a limited, intentionally constrained view of capabilities.
+    Zippy represents a technically mature, privacy-hardened individual
+    operating across systems, security, scripting, reverse engineering,
+    automation, and multimedia. Documented findings associate the
+    subject with offensive security activity, malware infection and
+    distribution, and the sale or distribution of pirated material.
   </p>
+
+  <p>
+    Their technical profile extends beyond individual applications into
+    operating-system configuration, encrypted storage, virtualization,
+    browser hardening, network privacy, and identity compartmentalization.
+    This combination indicates substantial familiarity with both
+    adversarial systems and defensive operational practices.
+  </p>
+
+  <p>
+    Public artifacts provide only a partial representation of the
+    subject's capabilities. Their combination of technical knowledge,
+    environmental isolation, privacy practices, and identity
+    compartmentalization makes capability difficult to infer reliably
+    from public information alone.
+  </p>
+
   <p class="risk-high">
     Tracking Difficulty: High • Predictability: Low • Technical Threat Potential: High
   </p>
@@ -166,7 +640,7 @@
 </main>
 
 <footer>
-  WHOIS Report • Generated from publicly indexed OSINT references
+  WHOIS Report • Zippy / 7zh14 • Generated from publicly indexed OSINT references
 </footer>
 
 </body>
